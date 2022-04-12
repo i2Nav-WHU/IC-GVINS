@@ -4,7 +4,7 @@
 
 **IC-GVINS** is a robust, real-time, inertial navigation system (INS)-Centric GNSS-Visual-Inertial navigation system for wheeled robot, in which the precise INS is fully utilized in both the state estimation and visual process. To improve the system robustness, the INS information is employed during the whole keyframe-based visual process, with strict outlier-culling strategy. GNSS is adopted to perform an accurate and convenient initialization of the IC-GVINS, and is further employed to achieve absolute positioning in large-scale environments. The IMU, visual, and GNSS measurements are tightly fused within the framework of factor graph optimization.
 
-<img src="resources/overview.png" alt="overview" style="zoom:80%;" />
+<img src="resources/overview.png" alt="overview" style="zoom: 30%;" />
 
 **Authors:** Hailiang Tang, Xiaoji Niu, and Tisheng Zhang from the [Integrated and Intelligent Navigation (i2Nav) Group](http://www.i2nav.com/), Wuhan University.
 
@@ -16,8 +16,7 @@
 **Related Video**:
 
 Click the following image to open our video on [Bilibili](https://www.bilibili.com/video/BV15a411q71D).
-
-<a href ="https://www.bilibili.com/video/BV15a411q71D"><img src="resources/cover.png" alt="cover" style="zoom:80%;" /></a>
+<a href ="https://www.bilibili.com/video/BV15a411q71D"><img src="resources/cover.png" alt="cover" style="zoom: 30%;" /></a>
 
 ## 1 Prerequisites
 
