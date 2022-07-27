@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+    <name>ic_gvins</name>
+    <version>1.0.0</version>
+    <description>The IC-GVINS ROS Interface</description>
+
+    <license>GPLv3</license>
+
+    <maintainer email="thl@whu.edu.cn">hailiang</maintainer>
+    <author email="thl@whu.edu.cn">hailiang</author>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <depend>roscpp</depend>
+    <depend>std_msgs</depend>
+
+</package>

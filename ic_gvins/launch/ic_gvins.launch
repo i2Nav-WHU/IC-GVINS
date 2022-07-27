@@ -1,0 +1,16 @@
+<launch>
+    <arg name="configfile" default=""/>
+
+    <node name="ic_gvins_node" pkg="ic_gvins" type="ic_gvins_ros" output="screen">
+        <param name="imu_topic" value="/imu0"/>
+        <param name="gnss_topic" value="/gnss0"/>
+        <param name="image_topic" value="/cam0"/>
+
+        <param name="configfile" value="$(arg configfile)"/>
+    </node>
+
+    <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_broadcaster"
+          args="0 0 0 -1 0 0 0 map world"/>
+    <node name="visualisation" pkg="rviz" type="rviz" output="log" args="-d $(find ic_gvins)/../config/visualization.rviz"/>
+
+</launch>
