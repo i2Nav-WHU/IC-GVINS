@@ -42,13 +42,6 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 find_package(yaml-cpp REQUIRED)
 target_link_libraries(ic_gvins_core ${YAML_CPP_LIBRARIES})
 
-# abseil
-find_package(absl REQUIRED)
-target_link_libraries(ic_gvins_core
-        absl::strings
-        absl::str_format
-        absl::time)
-
 # Ceres
 find_package(Ceres REQUIRED)
 target_link_libraries(ic_gvins_core ${CERES_LIBRARIES})
@@ -57,6 +50,14 @@ target_link_libraries(ic_gvins_core ${CERES_LIBRARIES})
 find_package(Boost REQUIRED COMPONENTS filesystem)
 target_link_libraries(ic_gvins_core
         ${Boost_LIBRARIES})
+
+# abseil
+set(ABSL_PROPAGATE_CXX_STD true)
+add_subdirectory(thirdparty/abseil-cpp abseil-cpp)
+target_link_libraries(ic_gvins_core
+        absl::strings
+        absl::str_format
+        absl::time)
 
 # ROS interface
 find_package(catkin REQUIRED COMPONENTS

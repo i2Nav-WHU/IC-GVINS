@@ -67,10 +67,6 @@ sudo apt install libopencv-dev
 sudo apt install libyaml-cpp-dev
 ```
 
-### 1.6 abseil-cpp
-
-Follow [abseil-cpp installation instructions](https://abseil.io/docs/cpp/quickstart-cmake.html).
-
 ## 2 Build and run IC-GVINS
 
 ### 2.1 Build the source code
