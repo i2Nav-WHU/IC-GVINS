@@ -101,13 +101,12 @@ source ~/gvins_ws/devel/setup.bash
 # source ~/gvins_ws/devel/setup.zsh
 
 # Run IC-GVINS node
-# You should change the path
+# You should change the path in both the configuration file and command line
 roslaunch ic_gvins ic_gvins.launch configfile:=path/urban38/IC-GVINS/gvins.yaml
 
 # Open another terminal to play the ROS bag
 rosbag play path/urban38/urban38.bag
 ```
-
 
 ## 3 Datasets
 
@@ -115,11 +114,11 @@ rosbag play path/urban38/urban38.bag
 
 We use standard ROS bag for IC-GVINS. The employed messages are as follows:
 
-| Sensor   | Message                                                      | Default Topic |
-| -------- | ------------------------------------------------------------ | ------------- |
-| Camera   | [sensor_msgs/Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html) | /cam0         |
-| IMU      | [sensor_msgs/Imu](http://docs.ros.org/en/api/sensor_msgs/html/msg/Imu.html) | /imu0         |
-| GNSS-RTK | [sensor_msgs/NavSatFix](http://docs.ros.org/en/api/sensor_msgs/html/msg/NavSatFix.html) | /gnss0        |
+| Sensor   | Message                                                                                 | Default Topic | KAIST Dataset (Hz) | IC-GVINS Dataset (Hz) |
+| ---------- | ----------------------------------------------------------------------------------------- | --------------- | -------------------- | ----------------------- |
+| Camera   | [sensor_msgs/Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html)         | /cam0         | 10                 | 20                    |
+| IMU      | [sensor_msgs/Imu](http://docs.ros.org/en/api/sensor_msgs/html/msg/Imu.html)             | /imu0         | 100                | 200                   |
+| GNSS-RTK | [sensor_msgs/NavSatFix](http://docs.ros.org/en/api/sensor_msgs/html/msg/NavSatFix.html) | /gnss0        | 1                  | 1                     |
 
 The IMU should be in front-right-down format in the IC-GVINS.
 
@@ -127,10 +126,10 @@ The IMU should be in front-right-down format in the IC-GVINS.
 
 The tested sequences are *urban38* and *urban39*.
 
-| Sequence         | Time length (seconds) | Trajectory Length (m) | Baidu Cloud Link                                             |
-| ---------------- | --------------------- | --------------------- | ------------------------------------------------------------ |
+| Sequence         | Time length (seconds) | Trajectory Length (m) | Baidu Cloud Link                                                      |
+| ------------------ | ----------------------- | ----------------------- | ----------------------------------------------------------------------- |
 | urban38 (top)    | 2154                  | 11191                 | [urban38.bag](https://pan.baidu.com/s/1CJj0Z1vClU4aL8zSna-LzQ) (gyvr) |
-| urban39 (bottom) | 1856                  | 10678                 | [urban39.bag](https://pan.baidu.com/s/14CHl7LaIIkBKpwhyuPPbPA) (mnrn)                                           |
+| urban39 (bottom) | 1856                  | 10678                 | [urban39.bag](https://pan.baidu.com/s/14CHl7LaIIkBKpwhyuPPbPA) (mnrn) |
 
 <img src="resources/dataset/urban38.png" alt="urban38" style="zoom: 50%;" />
 
@@ -140,8 +139,8 @@ The tested sequences are *urban38* and *urban39*.
 
 We also open source our self-collected robot dataset.
 
-| Sequence          | Time length (seconds) | Trajectory Length (m) | Baidu Cloud Link    |
-| ----------------- | --------------------- | --------------------- | ------------------- |
+| Sequence          | Time length (seconds) | Trajectory Length (m) | Baidu Cloud Link                                                       |
+| ------------------- | ----------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | campus (top)      | 950                   | 1337                  | [campus.bag](https://pan.baidu.com/s/18yRYUQdu_-DmrYnXQy9VNQ) (igks)   |
 | building (bottom) | 1820                  | 2560                  | [building.bag](https://pan.baidu.com/s/1Y48jFmdAOBF4y30KBK9bAw) (2drg) |
 
@@ -154,7 +153,6 @@ We also open source our self-collected robot dataset.
 You can run IC-GVINS with your self-collected dataset. Keep in mind the following notes:
 
 1. You should prepare well-synchronized GNSS, Camera, and IMU data in a ROS bag;
-
 2. The IMU data should be in front-right-down format;
 3. Modify the topic names in the ic_gvins.launch file;
 4. Modify the parameters in the configuration file.
@@ -166,7 +164,6 @@ We use [evo](https://github.com/MichaelGrupp/evo) to evaluate the TUM trajectory
 ## 4 Acknowledgements
 
 We thanks the following projects for the helps in developing and evaluating the IC-GVINS:
-
 
 - [OB_GINS](https://github.com/i2Nav-WHU/OB_GINS): An Optimization-Based GNSS/INS Integrated Navigation System
 - [VINS-Fusion](https://github.com/HKUST-Aerial-Robotics/VINS-Fusion): An optimization-based multi-sensor state estimator
