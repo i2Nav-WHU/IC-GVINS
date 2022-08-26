@@ -81,8 +81,8 @@ GVINS::GVINS(const string &configfile, const string &outputpath, Drawer::Ptr dra
 
     // 安装参数
     // Installation parameters
-    vecdata    = config["antlever"].as<std::vector<double>>();
-    antlever_  = Vector3d(vecdata.data());
+    vecdata   = config["antlever"].as<std::vector<double>>();
+    antlever_ = Vector3d(vecdata.data());
 
     // IMU噪声参数
     // IMU parameters
@@ -97,7 +97,7 @@ GVINS::GVINS(const string &configfile, const string &outputpath, Drawer::Ptr dra
     integration_config_.iswithearth = config["iswithearth"].as<bool>();
     integration_config_.isuseodo    = false;
     integration_config_.iswithscale = false;
-    integration_config_.gravity     = {0, 0, NORMAL_GRAVITY};
+    integration_config_.gravity     = {0, 0, integration_parameters_->gravity};
 
     // 初始值, 后续根据GNSS定位实时更新
     // GNSS variables intializaiton
@@ -1202,7 +1202,7 @@ bool GVINS::gvinsOptimization() {
         iterations_[1] = summary.num_successful_steps;
         timecosts_[1]  = timecost.costInMillisecond();
 
-        if (map_->isMaximumKeframes()) {
+        if (!map_->isMaximumKeframes()) {
             // 进行必要的重积分
             // Reintegration during initialization
             doReintegration();

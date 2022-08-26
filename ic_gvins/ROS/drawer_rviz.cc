@@ -167,11 +167,6 @@ void DrawerRviz::publishOdometry() {
 
     nav_msgs::Odometry odometry;
 
-    Matrix3d rotation = Matrix3d::Zero();
-    rotation(0, 1)    = -1;
-    rotation(1, 2)    = -1;
-    rotation(2, 0)    = 1;
-
     auto quaternion = Rotation::matrix2quaternion(pose_.R);
     auto stamp      = ros::Time::now();
 
