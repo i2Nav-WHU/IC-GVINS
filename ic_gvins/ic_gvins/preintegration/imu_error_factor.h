@@ -30,22 +30,55 @@
 class ImuErrorFactor : public ceres::CostFunction {
 
 public:
-    explicit ImuErrorFactor(std::shared_ptr<PreintegrationBase> preintegration)
-        : preintegration_(std::move(preintegration)) {
+    explicit ImuErrorFactor(Preintegration::PreintegrationOptions options)
+        : options_(options) {
 
-        *mutable_parameter_block_sizes() = vector<int>{preintegration_->numMixParametersBlocks()};
-        set_num_residuals(preintegration_->imuErrorNumResiduals());
+        *mutable_parameter_block_sizes() = vector<int>{Preintegration::numMixParameter(options_)};
+
+        if ((options_ == Preintegration::PREINTEGRATION_NORMAL) || (options_ == Preintegration::PREINTEGRATION_EARTH)) {
+            set_num_residuals(6);
+        } else {
+            set_num_residuals(7);
+        }
     }
 
     bool Evaluate(const double *const *parameters, double *residuals, double **jacobians) const override {
 
         // parameters: vel[3], bg[3], ba[3], sodo
 
-        preintegration_->imuErrorEvaluate(parameters, residuals);
+        // bg, ba
+        for (size_t k = 0; k < 3; k++) {
+            residuals[k + 0] = parameters[0][k + 3] / IMU_GRY_BIAS_STD;
+            residuals[k + 3] = parameters[0][k + 6] / IMU_ACC_BIAS_STD;
+        }
 
-        if (jacobians) {
-            if (jacobians[0]) {
-                preintegration_->imuErrorJacobian(jacobians[0]);
+        if ((options_ == Preintegration::PREINTEGRATION_NORMAL) || (options_ == Preintegration::PREINTEGRATION_EARTH)) {
+            // Without odometer
+
+            if (jacobians && jacobians[0]) {
+                Eigen::Map<Eigen::Matrix<double, 6, 9, Eigen::RowMajor>> jaco(jacobians[0]);
+                jaco.setZero();
+
+                for (size_t k = 0; k < 3; k++) {
+                    jaco(k + 0, k + 3) = 1.0 / IMU_GRY_BIAS_STD;
+                    jaco(k + 3, k + 6) = 1.0 / IMU_ACC_BIAS_STD;
+                }
+            }
+
+        } else if ((options_ == Preintegration::PREINTEGRATION_ODO) ||
+                   (options_ == Preintegration::PREINTEGRATION_EARTH_ODO)) {
+            // With odometer
+            residuals[6] = parameters[0][9] / ODO_SCALE_STD;
+
+            if (jacobians && jacobians[0]) {
+                Eigen::Map<Eigen::Matrix<double, 7, 10, Eigen::RowMajor>> jaco(jacobians[0]);
+                jaco.setZero();
+
+                for (size_t k = 0; k < 3; k++) {
+                    jaco(k + 0, k + 3) = 1.0 / IMU_GRY_BIAS_STD;
+                    jaco(k + 3, k + 6) = 1.0 / IMU_ACC_BIAS_STD;
+                }
+                jaco(6, 9) = 1.0 / ODO_SCALE_STD;
             }
         }
 
@@ -53,7 +86,11 @@ public:
     }
 
 private:
-    std::shared_ptr<PreintegrationBase> preintegration_;
+    static constexpr double IMU_GRY_BIAS_STD = 7200 / 3600.0 * M_PI / 180.0; // 7200 deg / hr
+    static constexpr double IMU_ACC_BIAS_STD = 2.0e4 * 1.0e-5;               // 20000 mGal
+    static constexpr double ODO_SCALE_STD    = 2.0e4 * 1.0e-6;               // 0.02
+
+    Preintegration::PreintegrationOptions options_;
 };
 
 #endif // IMU_ERROR_FACTOR_H

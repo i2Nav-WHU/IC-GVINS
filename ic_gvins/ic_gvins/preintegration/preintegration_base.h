@@ -89,10 +89,6 @@ public:
     virtual void constructState(const double *const *parameters, IntegrationState &state0,
                                 IntegrationState &state1) = 0;
 
-    virtual int imuErrorNumResiduals()                                                = 0;
-    virtual void imuErrorEvaluate(const double *const *parameters, double *residuals) = 0;
-    virtual void imuErrorJacobian(double *jacobian)                                   = 0;
-
 protected:
     // need compensate bias
     virtual void updateJacobianAndCovariance(const IMU &imu_pre, const IMU &imu_cur) = 0;

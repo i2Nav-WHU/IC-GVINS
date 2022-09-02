@@ -388,35 +388,6 @@ void PreintegrationEarthOdo::setNoiseMatrix() {
     noise_(15, 15) *= parameters_->odo_srw * parameters_->odo_srw;                          // nsodo
 }
 
-int PreintegrationEarthOdo::imuErrorNumResiduals() {
-    return NUM_ERROR_RESIDUAL;
-}
-
 int PreintegrationEarthOdo::numMixParametersBlocks() {
     return NUM_MIX;
-}
-
-void PreintegrationEarthOdo::imuErrorEvaluate(const double *const *parameters, double *residuals) {
-    // bg, ba
-    residuals[0] = parameters[0][3] / IMU_GRY_BIAS_STD;
-    residuals[1] = parameters[0][4] / IMU_GRY_BIAS_STD;
-    residuals[2] = parameters[0][5] / IMU_GRY_BIAS_STD;
-    residuals[3] = parameters[0][6] / IMU_ACC_BIAS_STD;
-    residuals[4] = parameters[0][7] / IMU_ACC_BIAS_STD;
-    residuals[5] = parameters[0][8] / IMU_ACC_BIAS_STD;
-    residuals[6] = parameters[0][9] / ODO_SCALE_STD;
-}
-
-void PreintegrationEarthOdo::imuErrorJacobian(double *jacobian) {
-    Eigen::Map<Eigen::Matrix<double, NUM_ERROR_RESIDUAL, NUM_MIX, Eigen::RowMajor>> jaco(jacobian);
-
-    jaco.setZero();
-
-    jaco(0, 3) = 1.0 / IMU_GRY_BIAS_STD;
-    jaco(1, 4) = 1.0 / IMU_GRY_BIAS_STD;
-    jaco(2, 5) = 1.0 / IMU_GRY_BIAS_STD;
-    jaco(3, 6) = 1.0 / IMU_ACC_BIAS_STD;
-    jaco(4, 7) = 1.0 / IMU_ACC_BIAS_STD;
-    jaco(5, 8) = 1.0 / IMU_ACC_BIAS_STD;
-    jaco(6, 9) = 1.0 / ODO_SCALE_STD;
 }

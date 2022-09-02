@@ -49,10 +49,6 @@ public:
     static IntegrationState stateFromData(const IntegrationStateData &data);
     void constructState(const double *const *parameters, IntegrationState &state0, IntegrationState &state1) override;
 
-    int imuErrorNumResiduals() override;
-    void imuErrorEvaluate(const double *const *parameters, double *residuals) override;
-    void imuErrorJacobian(double *jacobian) override;
-
 protected:
     void integrationProcess(unsigned long index) override;
     void resetState(const IntegrationState &state) override;

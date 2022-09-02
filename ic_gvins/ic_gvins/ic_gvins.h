@@ -23,6 +23,7 @@
 #ifndef GVINS_GVINS_H
 #define GVINS_GVINS_H
 
+#include "common/angle.h"
 #include "common/timecost.h"
 #include "fileio/filesaver.h"
 #include "tracking/drawer.h"
@@ -84,6 +85,7 @@ private:
     bool insertNewGnssTimeNode();
     void addNewKeyFrameTimeNode();
     bool removeUnusedTimeNode();
+    void constructPrior(bool is_zero_velocity);
 
     void addStateParameters(ceres::Problem &problem);
     void addReprojectionParameters(ceres::Problem &problem);
@@ -133,6 +135,11 @@ private:
     // Maximum length for IMU preintegration
     const double MAXIMUM_PREINTEGRATION_LENGTH = 10.0;
 
+    // 先验标准差
+    // The prior STD for IMU biases
+    const double GYROSCOPE_BIAS_PRIOR_STD     = 1000 * D2R / 3600; // 1000 deg/hr
+    const double ACCELEROMETER_BIAS_PRIOR_STD = 1000 * 1.0e-5;     // 1000 mGal
+
     // 优化参数, 使用deque容器管理, 移除头尾不会造成数据内存移动
     // The state data in the sliding window
     std::deque<std::shared_ptr<PreintegrationBase>> preintegrationlist_;
@@ -148,6 +155,14 @@ private:
     // Marginalization variables
     std::shared_ptr<MarginalizationInfo> last_marginalization_info_{nullptr};
     std::vector<double *> last_marginalization_parameter_blocks_;
+
+    // 先验
+    // The prior
+    bool is_use_prior_{false};
+    double mix_prior_[18];
+    double mix_prior_std_[18];
+    double pose_prior_[7];
+    double pose_prior_std_[6];
 
     // 融合对象
     // GVINS fusion objects
