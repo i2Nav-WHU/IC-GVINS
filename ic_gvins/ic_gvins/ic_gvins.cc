@@ -637,8 +637,14 @@ bool GVINS::gvinsInitialization() {
             if (velocity.norm() < MINMUM_ALIGN_VELOCITY) {
                 return false;
             }
+
+            if (!is_has_zero_velocity) {
+                initatt[0] = 0;
+                initatt[1] = atan(-velocity.z() / sqrt(velocity.x() * velocity.x() + velocity.y() * velocity.y()));
+                LOGI << "Initialized pitch from GNSS as " << initatt[1] * R2D << " deg";
+            }
             initatt[2] = atan2(velocity.y(), velocity.x());
-            LOGI << "Initialized heading from GNSS positioning as " << initatt[2] * R2D << " deg";
+            LOGI << "Initialized heading from GNSS as " << initatt[2] * R2D << " deg";
         }
     } else {
         return false;

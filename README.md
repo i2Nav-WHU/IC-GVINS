@@ -43,7 +43,7 @@ Follow [ROS Melodic installation instructions for Ubuntu 18.04](https://wiki.ros
 
 ### 1.3 Ceres Solver with its Dependencies
 
-We use Ceres Solver to solve the non-linear least squares problem in IC-GVINS. The supported version is **Ceres Solver 2.0**. Please follow [Ceres installation instructions](http://ceres-solver.org/installation.html).
+We use Ceres Solver to solve the non-linear least squares problem in IC-GVINS. The supported version is **Ceres Solver 2.0.0 or 2.1.0**. Please follow [Ceres installation instructions](http://ceres-solver.org/installation.html).
 
 The dependencies **Eigen (>=3.3.7)** and **glog (>=0.4.0)** are also used in IC-GVINS. You can install them as follows:
 
@@ -120,7 +120,7 @@ We use standard ROS bag for IC-GVINS. The employed messages are as follows:
 | IMU      | [sensor_msgs/Imu](http://docs.ros.org/en/api/sensor_msgs/html/msg/Imu.html)             | /imu0         | 100                | 200                   |
 | GNSS-RTK | [sensor_msgs/NavSatFix](http://docs.ros.org/en/api/sensor_msgs/html/msg/NavSatFix.html) | /gnss0        | 1                  | 1                     |
 
-The IMU should be in front-right-down format in the IC-GVINS.
+The IMU should be in **front-right-down** format in the IC-GVINS.
 
 ### 3.2 KAIST Complex Urban Dataset
 
