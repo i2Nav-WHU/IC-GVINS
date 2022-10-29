@@ -1903,15 +1903,15 @@ vector<std::pair<ceres::ResidualBlockId, GNSS *>> GVINS::addGnssFactors(ceres::P
 }
 
 void GVINS::constructPrior(bool is_zero_velocity) {
-    double pos_prior_std  = 0.01;                                  // 0.01 m
-    double att_prior_std  = 0.5 * D2R;                             // 0.5 deg
-    double vel_prior_std  = 0.1;                                   // 0.1 m/s
-    double bg_prior_std   = integration_parameters_->gyr_bias_std; // Bias std
-    double ba_prior_std   = ACCELEROMETER_BIAS_PRIOR_STD;          // 1000 mGal
-    double sodo_prior_std = 0.001;                                 // 1000 PPM
+    double pos_prior_std  = 0.1;                                       // 0.1 m
+    double att_prior_std  = 0.5 * D2R;                                 // 0.5 deg
+    double vel_prior_std  = 0.1;                                       // 0.1 m/s
+    double bg_prior_std   = integration_parameters_->gyr_bias_std * 3; // Bias std * 3
+    double ba_prior_std   = ACCELEROMETER_BIAS_PRIOR_STD;              // 20000 mGal
+    double sodo_prior_std = 0.005;                                     // 5000 PPM
 
     if (!is_zero_velocity) {
-        bg_prior_std = GYROSCOPE_BIAS_PRIOR_STD; // 1000 deg/hr
+        bg_prior_std = GYROSCOPE_BIAS_PRIOR_STD; // 7200 deg/hr
     }
 
     memcpy(pose_prior_, statedatalist_[0].pose, sizeof(double) * 7);
@@ -1924,7 +1924,7 @@ void GVINS::constructPrior(bool is_zero_velocity) {
         mix_prior_std_[k + 3] = bg_prior_std;
         mix_prior_std_[k + 6] = ba_prior_std;
     }
-    pose_prior_std_[5] = att_prior_std * 5;
+    pose_prior_std_[5] = att_prior_std * 3; // heading
     mix_prior_std_[9]  = sodo_prior_std;
     is_use_prior_      = true;
 }
