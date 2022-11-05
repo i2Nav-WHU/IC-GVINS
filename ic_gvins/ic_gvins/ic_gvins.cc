@@ -625,30 +625,32 @@ bool GVINS::gvinsInitialization() {
         is_has_zero_velocity = true;
     }
 
-    // 里程计速度大于MINMUM_ALIGN_VELOCITY, 或者非零速状态
+    // 非零速状态
     // Initialization conditions
-    Vector3d velocity = Vector3d::Zero();
-    if ((integration_config_.isuseodo && imu_buff.back().odovel > MINMUM_ALIGN_VELOCITY) || !is_zero_velocity) {
+    if (!is_zero_velocity) {
         if (last_gnss_.isyawvalid) {
             initatt[2] = last_gnss_.yaw;
             LOGI << "Initialized heading from dual-antenna GNSS as " << initatt[2] * R2D << " deg";
         } else {
-            velocity = gnss_.blh - last_gnss_.blh;
-            if (velocity.norm() < MINMUM_ALIGN_VELOCITY) {
+            Vector3d vel = gnss_.blh - last_gnss_.blh;
+            if (vel.norm() < MINMUM_ALIGN_VELOCITY) {
                 return false;
             }
 
             if (!is_has_zero_velocity) {
                 initatt[0] = 0;
-                initatt[1] = atan(-velocity.z() / sqrt(velocity.x() * velocity.x() + velocity.y() * velocity.y()));
+                initatt[1] = atan(-vel.z() / sqrt(vel.x() * vel.x() + vel.y() * vel.y()));
                 LOGI << "Initialized pitch from GNSS as " << initatt[1] * R2D << " deg";
             }
-            initatt[2] = atan2(velocity.y(), velocity.x());
+            initatt[2] = atan2(vel.y(), vel.x());
             LOGI << "Initialized heading from GNSS as " << initatt[2] * R2D << " deg";
         }
     } else {
         return false;
     }
+
+    // 从零速开始
+    Vector3d velocity = Vector3d::Zero();
 
     // 初始状态, 从上一秒开始
     // The initialization state

@@ -125,7 +125,7 @@ private:
 
     // 动态航向初始的最小速度
     // Minimum velocity for GNSS/INS intializaiton
-    const double MINMUM_ALIGN_VELOCITY = 1.0;
+    const double MINMUM_ALIGN_VELOCITY = 0.5;
 
     // 允许的最小同步间隔
     // Minimum synchronization interval for GNSS
