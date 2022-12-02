@@ -2,7 +2,7 @@
 
 ## A Robust, Real-time, INS-Centric GNSS-Visual-Inertial Navigation System
 
-**IC-GVINS** is a robust, real-time, inertial navigation system (INS)-Centric GNSS-Visual-Inertial navigation system, in which the precise INS is fully utilized in both the state estimation and visual processes. To improve the system robustness, the INS information is employed during the whole keyframe-based visual process, with strict outlier-culling strategy. The GNSS is adopted to perform an accurate and convenient initialization, and is further employed to achieve absolute positioning in large-scale environments. The IMU, visual, and GNSS measurements are tightly fused within the framework of factor graph optimization.
+Visual navigation systems are susceptible to complex environments, while inertial navigation systems (INS) are not affected by external factors. Hence, we present IC-GVINS, a robust, real-time, INS-centric global navigation satellite system (GNSS)-visual-inertial navigation system to fully utilize the INS advantages. The Earth rotation has been compensated in the INS to improve the accuracy of high-grade inertial measurement units (IMUs). To promote the system robustness in high-dynamic conditions, the precise INS information is employed to assist the feature tracking and landmark triangulation. With a GNSS-aided initialization, the IMU, visual, and GNSS measurements are tightly fused in a unified world frame within the factor graph optimization framework.
 
 <img src="resources/overview.png" alt="overview" style="zoom: 30%;" />
 
@@ -10,7 +10,7 @@
 
 **Related Paper:**
 
-- Hailiang Tang, Tisheng Zhang, Xiaoji Niu, Jing Fan, and Jingnan Liu, “IC-GVINS: A Robust, Real-time, INS-Centric GNSS-Visual-Inertial Navigation System for Wheeled Robot,” Apr. 2022. [Online]. Available: https://arxiv.org/abs/2204.04962v1
+- Xiaoji Niu, Hailiang Tang, Tisheng Zhang, Jing Fan, and Jingnan Liu, “IC-GVINS: A Robust, Real-time, INS-Centric GNSS-Visual-Inertial Navigation System,” *IEEE Robotics and Automation Letters*, 2022.
 - Hailiang Tang, Tisheng Zhang, Xiaoji Niu, Jing Fan, and Jingnan Liu, “Impact of the Earth Rotation Compensation on MEMS-IMU Preintegration of Factor Graph Optimization,” *IEEE Sensors Journal*, 2022.
 
 **Related Video**:
