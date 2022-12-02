@@ -702,6 +702,7 @@ bool Tracking::triangulation() {
     int num_succeeded = 0;
     int num_outlier   = 0;
     int num_reset     = 0;
+    int num_outtime   = 0;
 
     // 原始带畸变的角点
     auto pts2d_ref_undis = pts2d_ref_;
@@ -728,15 +729,15 @@ bool Tracking::triangulation() {
             continue;
         }
 
-        pose0 = frame_ref->pose();
-
         // 移除长时间跟踪导致参考帧已经不在窗口内的观测
-        if (map_->isWindowFull() && !map_->isKeyFrameInMap(frame_ref)) {
+        if (map_->isWindowNormal() && !map_->isKeyFrameInMap(frame_ref)) {
             status.push_back(0);
+            num_outtime++;
             continue;
         }
 
         // 进行必要的视差检查, 保证三角化有效
+        pose0           = frame_ref->pose();
         double parallax = keyPointParallax(pts2d_ref_undis[k], pts2d_cur_undis[k], pose0, pose1);
         if (parallax < TRACK_MIN_PARALLAX) {
             status.push_back(1);
@@ -792,7 +793,7 @@ bool Tracking::triangulation() {
     pts2d_new_ = pts2d_cur_;
 
     LOGI << "Triangulate " << num_succeeded << " 3D points with " << pts2d_cur_.size() << " left, " << num_reset
-         << " reset and " << num_outlier << " outliers";
+         << " reset, " << num_outtime << " outtime and " << num_outlier << " outliers";
     return true;
 }
 

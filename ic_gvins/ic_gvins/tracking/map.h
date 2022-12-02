@@ -85,6 +85,11 @@ public:
         return is_window_full_;
     }
 
+    bool isWindowNormal() {
+        std::unique_lock<std::mutex> lock(map_mutex_);
+        return keyframes_.size() == window_size_;
+    }
+
 private:
     std::mutex map_mutex_;
 
