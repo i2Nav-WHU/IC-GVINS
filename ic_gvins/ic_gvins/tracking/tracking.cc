@@ -319,7 +319,7 @@ bool Tracking::doResetTracking() {
     if (!frame_cur_->numFeatures()) {
         isinitializing_ = true;
         frame_ref_      = frame_cur_;
-        pts2d_cur_.clear();
+        pts2d_new_.clear();
         pts2d_ref_.clear();
         pts2d_ref_frame_.clear();
         velocity_ref_.clear();
