@@ -136,7 +136,7 @@ public:
         double h = 0, h2;
 
         // 初始状态
-        lat = atan(ecef[2] / (p * 1.0 - WGS84_E1));
+        lat = atan(ecef[2] / (p * (1.0 - WGS84_E1)));
         lon = 2.0 * atan2(ecef[1], ecef[0] + p);
 
         do {
