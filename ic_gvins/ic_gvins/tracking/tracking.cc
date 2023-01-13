@@ -26,8 +26,7 @@
 #include "common/logging.h"
 #include "common/rotation.h"
 
-#include <omp.h>
-#include <opencv2/core/eigen.hpp>
+#include <tbb/tbb.h>
 #include <yaml-cpp/yaml.h>
 
 Tracking::Tracking(Camera::Ptr camera, Map::Ptr map, Drawer::Ptr drawer, const string &configfile,
@@ -625,35 +624,36 @@ void Tracking::featuresDetection(Frame::Ptr &frame, bool ismask) {
     cv::Size zero_zone         = cv::Size(-1, -1);
     cv::TermCriteria term_crit = cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 20, 0.01);
 
-#pragma omp parallel for num_threads(3) default(none)                                                                  \
-    shared(frame, mask, features_cnts, block_features, win_size, zero_zone, term_crit)
-    for (int k = 0; k < block_cnts_; k++) {
-        int blocl_track_num = track_max_block_features_ - features_cnts[k];
-        if (blocl_track_num > 0) {
+    auto tracking_function = [&](const tbb::blocked_range<int> &range) {
+        for (int k = range.begin(); k != range.end(); k++) {
+            int blocl_track_num = track_max_block_features_ - features_cnts[k];
+            if (blocl_track_num > 0) {
 
-            int cols = k % block_cols_;
-            int rows = k / block_cols_;
+                int cols = k % block_cols_;
+                int rows = k / block_cols_;
 
-            int col_sta = cols * block_indexs_[0].first;
-            int col_end = col_sta + block_indexs_[0].first;
-            int row_sta = rows * block_indexs_[0].second;
-            int row_end = row_sta + block_indexs_[0].second;
-            if (k != (block_cnts_ - 1)) {
-                col_end -= 5;
-                row_end -= 5;
-            }
+                int col_sta = cols * block_indexs_[0].first;
+                int col_end = col_sta + block_indexs_[0].first;
+                int row_sta = rows * block_indexs_[0].second;
+                int row_end = row_sta + block_indexs_[0].second;
+                if (k != (block_cnts_ - 1)) {
+                    col_end -= 5;
+                    row_end -= 5;
+                }
 
-            Mat block_image = frame->image().colRange(col_sta, col_end).rowRange(row_sta, row_end);
-            Mat block_mask  = mask.colRange(col_sta, col_end).rowRange(row_sta, row_end);
+                Mat block_image = frame->image().colRange(col_sta, col_end).rowRange(row_sta, row_end);
+                Mat block_mask  = mask.colRange(col_sta, col_end).rowRange(row_sta, row_end);
 
-            cv::goodFeaturesToTrack(block_image, block_features[k], blocl_track_num, 0.01, track_min_pixel_distance_,
-                                    block_mask);
-            if (!block_features[k].empty()) {
-                // 获取亚像素角点
-                cv::cornerSubPix(block_image, block_features[k], win_size, zero_zone, term_crit);
+                cv::goodFeaturesToTrack(block_image, block_features[k], blocl_track_num, 0.01,
+                                        track_min_pixel_distance_, block_mask);
+                if (!block_features[k].empty()) {
+                    // 获取亚像素角点
+                    cv::cornerSubPix(block_image, block_features[k], win_size, zero_zone, term_crit);
+                }
             }
         }
-    }
+    };
+    tbb::parallel_for(tbb::blocked_range<int>(0, block_cnts_), tracking_function);
 
     // 调整角点的坐标
     int num_new_features = 0;

@@ -3,14 +3,9 @@ project(ic_gvins)
 
 set(CMAKE_CXX_STANDARD 14)
 
-# Optimization and OpenMP Flags
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O3 -fopenmp=libomp")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -fopenmp=libomp")
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O3 -fopenmp")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -fopenmp")
-endif ()
+# Optimization
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 
 # Build GVINS library
 include_directories(
@@ -50,6 +45,11 @@ target_link_libraries(ic_gvins_core ${CERES_LIBRARIES})
 find_package(Boost REQUIRED COMPONENTS filesystem)
 target_link_libraries(ic_gvins_core
         ${Boost_LIBRARIES})
+
+# TBB
+find_package(TBB REQUIRED)
+target_link_libraries(ic_gvins_core
+        TBB::tbb)
 
 # abseil
 set(ABSL_PROPAGATE_CXX_STD true)
