@@ -327,7 +327,7 @@ void PreintegrationEarthOdo::updateJacobianAndCovariance(const IMU &imu_pre, con
     Vector3d stheta = cvb_ * dsodo * (1 + delta_state_.sodo) - imu_cur.dtheta.cross(lodo_);
 
     phi.block<3, 3>(15, 6)  = cbb0 * Rotation::skewSymmetric(stheta);
-    phi.block<3, 3>(15, 9)  = -cbb0 * Rotation::skewSymmetric(lodo_) * dt;
+    phi.block<3, 3>(15, 9)  = cbb0 * Rotation::skewSymmetric(lodo_) * dt;
     phi.block<3, 3>(15, 15) = Matrix3d::Identity();
     phi.block<3, 1>(15, 18) = -cbb0 * cvb_ * dsodo;
     phi(18, 18)             = 1.0;
