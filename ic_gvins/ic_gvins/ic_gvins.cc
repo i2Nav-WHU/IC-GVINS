@@ -994,6 +994,10 @@ void GVINS::parametersStatistic() {
         reprojection_errors.emplace_back(avg_error);
     }
 
+    if (reprojection_errors.empty()) {
+        reprojection_errors.push_back(0);
+    }
+
     double min_error = *std::min_element(reprojection_errors.begin(), reprojection_errors.end());
     parameters.push_back(min_error);
     double max_error = *std::max_element(reprojection_errors.begin(), reprojection_errors.end());
