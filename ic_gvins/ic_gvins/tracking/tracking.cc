@@ -377,7 +377,7 @@ bool Tracking::trackMappoint() {
     // 预测的特征点像素坐标添加畸变, 用于跟踪
     camera_->distortPoints(pts2d_matched);
 
-    vector<uint8_t> status, statue_reverse;
+    vector<uint8_t> status, status_reverse;
     vector<float> error;
     vector<cv::Point2f> pts2d_reverse = pts2d_map;
 
@@ -387,14 +387,14 @@ bool Tracking::trackMappoint() {
                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
                              cv::OPTFLOW_USE_INITIAL_FLOW);
     // 反向光流
-    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_matched, pts2d_reverse, statue_reverse,
+    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_matched, pts2d_reverse, status_reverse,
                              error, cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
                              cv::OPTFLOW_USE_INITIAL_FLOW);
 
     // 跟踪失败的
     for (size_t k = 0; k < status.size(); k++) {
-        if (status[k] && statue_reverse[k] && !isOnBorder(pts2d_matched[k]) &&
+        if (status[k] && status_reverse[k] && !isOnBorder(pts2d_matched[k]) &&
             (ptsDistance(pts2d_reverse[k], pts2d_map[k]) < 0.5)) {
             status[k] = 1;
         } else {
@@ -479,7 +479,7 @@ bool Tracking::trackReferenceFrame() {
     }
 
     // 跟踪参考帧
-    vector<uint8_t> status, statue_reverse;
+    vector<uint8_t> status, status_reverse;
     vector<float> error;
     vector<cv::Point2f> pts2d_reverse = pts2d_new_;
 
@@ -490,14 +490,14 @@ bool Tracking::trackReferenceFrame() {
                              cv::OPTFLOW_USE_INITIAL_FLOW);
 
     // 反向光流
-    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_cur_, pts2d_new_, statue_reverse, error,
+    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_cur_, pts2d_reverse, status_reverse, error,
                              cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
                              cv::OPTFLOW_USE_INITIAL_FLOW);
 
     // 剔除跟踪失败的, 正向反向跟踪在0.5个像素以内
     for (size_t k = 0; k < status.size(); k++) {
-        if (status[k] && statue_reverse[k] && !isOnBorder(pts2d_cur_[k]) &&
+        if (status[k] && status_reverse[k] && !isOnBorder(pts2d_cur_[k]) &&
             (ptsDistance(pts2d_reverse[k], pts2d_new_[k]) < 0.5)) {
             status[k] = 1;
         } else {
