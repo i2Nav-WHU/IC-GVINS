@@ -171,8 +171,8 @@ void MISC::insMechanization(const IntegrationConfiguration &config, const IMU &i
     state.time = imu_cur.time;
 
     // 双子样
-    Vector3d dvfb = imu_cur.dvel + 0.5 * imu_cur.dtheta.cross(imu_cur.dvel) +
-                    1.0 / 12.0 * (imu_pre.dtheta.cross(imu_cur.dvel) + imu_pre.dvel.cross(imu_cur.dtheta));
+    Vector3d dvfb = imu_cur2.dvel + 0.5 * imu_cur2.dtheta.cross(imu_cur2.dvel) +
+                    1.0 / 12.0 * (imu_pre2.dtheta.cross(imu_cur2.dvel) + imu_pre2.dvel.cross(imu_cur2.dtheta));
     Vector3d dtheta = imu_cur2.dtheta + 1.0 / 12.0 * imu_pre2.dtheta.cross(imu_cur2.dtheta);
 
     // 速度变化量
