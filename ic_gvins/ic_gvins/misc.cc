@@ -225,32 +225,29 @@ void MISC::redoInsMechanization(const IntegrationConfiguration &config, const In
 
     IMU imu0 = ins_windows[index - 1].first;
     IMU imu1 = ins_windows[index].first;
-    IMU imu;
 
     int isneed = isNeedInterpolation(imu0, imu1, state.time);
     if (isneed == -1) {
+        // 前一时刻状态为状态量
         insMechanization(config, imu0, imu1, state);
         ins_windows[index].second = state;
     } else if (isneed == 1) {
-        // 当前时刻状态即为状态量
+        // 当前时刻状态为状态量
         state.time                = imu1.time;
         ins_windows[index].second = state;
-
     } else if (isneed == 2) {
-        imuInterpolation(imu1, imu, imu1, state.time);
-        insMechanization(config, imu0, imu, state);
-        insMechanization(config, imu, imu1, state);
+        imuInterpolation(imu1, imu0, imu1, state.time);
+        insMechanization(config, imu0, imu1, state);
         ins_windows[index].second = state;
     }
-    imu0 = imu1;
 
     // 仅更新IMU时间点的状态
     for (size_t k = index + 1; k < ins_windows.size(); k++) {
+        imu0 = imu1;
+
         imu1 = ins_windows[k].first;
         insMechanization(config, imu0, imu1, state);
         ins_windows[k].second = state;
-
-        imu0 = imu1;
     }
 
     // 移除过期的IMU历元
