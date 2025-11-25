@@ -20,253 +20,309 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef GVINS_GVINS_H
-#define GVINS_GVINS_H
-
-#include "common/angle.h"
-#include "common/timecost.h"
-#include "fileio/filesaver.h"
-#include "tracking/drawer.h"
-#include "tracking/tracking.h"
-
-#include "factors/marginalization_info.h"
-#include "factors/reprojection_factor.h"
-#include "preintegration/preintegration.h"
-
-#include <ceres/ceres.h>
-
-#include <atomic>
-#include <condition_variable>
-#include <iostream>
-#include <thread>
-#include <unordered_map>
-
-class GVINS {
-
-public:
-    enum GVINSState {
-        GVINS_ERROR                 = -1,
-        GVINS_INITIALIZING          = 0,
-        GVINS_INITIALIZING_INS      = 1,
-        GVINS_INITIALIZING_VIO      = 2,
-        GVINS_TRACKING_INITIALIZING = 3,
-        GVINS_TRACKING_NORMAL       = 4,
-        GVINS_TRACKING_LOST         = 5,
-    };
-
-    typedef std::shared_ptr<GVINS> Ptr;
-    typedef std::unique_lock<std::mutex> Lock;
-
-    GVINS() = delete;
-    explicit GVINS(const string &configfile, const string &outputpath, Drawer::Ptr drawer);
-
-    bool addNewImu(const IMU &imu);
-    bool addNewGnss(const GNSS &gnss);
-    bool addNewFrame(const Frame::Ptr &frame);
-
-    void setFinished();
-
-    bool isRunning() const {
-        return !isfinished_;
-    }
-
-    GVINSState gvinsState() const {
-        return gvinsstate_;
-    }
-
-private:
-    void parametersStatistic();
-
-    bool gvinsInitialization();
-    bool gvinsInitializationOptimization();
-
-    void addNewTimeNode(double time);
-    void addNewGnssTimeNode();
-    bool insertNewGnssTimeNode();
-    void addNewKeyFrameTimeNode();
-    bool removeUnusedTimeNode();
-    void constructPrior(bool is_zero_velocity);
-
-    void addStateParameters(ceres::Problem &problem);
-    void addReprojectionParameters(ceres::Problem &problem);
-
-    void addImuFactors(ceres::Problem &problem);
-    vector<std::pair<ceres::ResidualBlockId, GNSS *>> addGnssFactors(ceres::Problem &problem, bool isusekernel);
-    vector<ceres::ResidualBlockId> addReprojectionFactors(ceres::Problem &problem, bool isusekernel);
-    void doReintegration();
-
-    void updateParametersFromOptimizer();
-
-    int getStateDataIndex(double time);
-
-    bool gvinsOptimization();
-    bool gvinsMarginalization();
-    bool gvinsOutlierCulling();
-    bool gvinsRemoveAllSecondNewFrame();
-
-    void gnssOutlierCullingByChi2(ceres::Problem &problem,
-                                  vector<std::pair<ceres::ResidualBlockId, GNSS *>> &redisual_block);
-    static int removeReprojectionFactorsByChi2(ceres::Problem &problem, vector<ceres::ResidualBlockId> &residual_ids,
-                                               double chi2);
-
-    // Processing thread
-    void runFusion();
-    void runTracking();
-    void runOptimization();
-
-private:
-    // 正常重力
-    // Normal gravity
-    const double NORMAL_GRAVITY = 9.80;
-
-    // INS窗口内的最大数量, 对于200Hz, 保留5秒数据
-    // Maximum INS data in the window
-    const size_t MAXIMUM_INS_NUMBER = 1000;
-
-    // 动态航向初始的最小速度
-    // Minimum velocity for GNSS/INS intializaiton
-    const double MINMUM_ALIGN_VELOCITY = 0.5;
-
-    // 允许的最小同步间隔
-    // Minimum synchronization interval for GNSS
-    const double MINMUM_SYNC_INTERVAL = 0.025;
-
-    // 允许的最长预积分时间
-    // Maximum length for IMU preintegration
-    const double MAXIMUM_PREINTEGRATION_LENGTH = 10.0;
-
-    // 先验标准差
-    // The prior STD for IMU biases
-    const double GYROSCOPE_BIAS_PRIOR_STD     = 7200 * D2R / 3600; // 7200 deg/hr
-    const double ACCELEROMETER_BIAS_PRIOR_STD = 20000 * 1.0e-5;    // 20000 mGal
-
-    // 优化参数, 使用deque容器管理, 移除头尾不会造成数据内存移动
-    // The state data in the sliding window
-    std::deque<std::shared_ptr<PreintegrationBase>> preintegrationlist_;
-    std::deque<IntegrationStateData> statedatalist_;
-    std::deque<GNSS> gnsslist_;
-    std::deque<double> timelist_;
-    std::unordered_map<ulong, double> invdepthlist_;
-    double extrinsic_[8]{0};
-
-    std::vector<double> unused_time_nodes_;
-
-    // 边缘化
-    // Marginalization variables
-    std::shared_ptr<MarginalizationInfo> last_marginalization_info_{nullptr};
-    std::vector<double *> last_marginalization_parameter_blocks_;
-
-    // 先验
-    // The prior
-    bool is_use_prior_{false};
-    double mix_prior_[18];
-    double mix_prior_std_[18];
-    double pose_prior_[7];
-    double pose_prior_std_[6];
-
-    // 融合对象
-    // GVINS fusion objects
-    Tracking::Ptr tracking_;
-    Map::Ptr map_;
-    Camera::Ptr camera_;
-    Drawer::Ptr drawer_;
-
-    // 多线程
-    // Multi-thread variables
-    std::thread drawer_thread_;
-    std::thread tracking_thread_;
-    std::thread optimization_thread_;
-    std::thread fusion_thread_;
-
-    std::atomic<bool> isoptimized_{false};
-    std::atomic<bool> isfinished_{false};
-    std::atomic<bool> isgnssready_{false};
-    std::atomic<bool> isframeready_{false};
-    std::atomic<bool> isgnssobs_{false};
-    std::atomic<bool> isvisualobs_{false};
-
-    // IMU处理
-    // Ins process
-    std::mutex imu_buffer_mutex_;
-    std::mutex fusion_mutex_;
-    std::condition_variable fusion_sem_;
-    std::mutex ins_mutex_;
-
-    // 跟踪处理
-    // Tracking process
-    std::mutex frame_buffer_mutex_;
-    std::mutex tracking_mutex_;
-    std::condition_variable tracking_sem_;
-    std::mutex keyframes_mutex_;
-
-    // 优化处理
-    // Optimization process
-    std::mutex optimization_mutex_;
-    std::mutex state_mutex_;
-    std::condition_variable optimization_sem_;
-
-    // 传感器数据
-    // GVINS sensor data
-    std::queue<Frame::Ptr> keyframes_;
-    GNSS gnss_{0}, last_gnss_{0}, last_last_gnss_{0};
-
-    std::queue<Frame::Ptr> frame_buffer_;
-
-    std::queue<IMU> imu_buffer_;
-    std::deque<std::pair<IMU, IntegrationState>> ins_window_;
-
-    // IMU参数
-    // IMU parameters
-    std::shared_ptr<IntegrationParameters> integration_parameters_;
-    Preintegration::PreintegrationOptions preintegration_options_;
-    IntegrationConfiguration integration_config_;
-
-    double imudatarate_{200};
-    double imudatadt_{0.005};
-    size_t reserved_ins_num_;
-
-    Vector3d antlever_;
-
-    // 初始化信息
-    // Initialization
-    int initlength_;
-
-    // 外参
-    // Camera-IMU extrinsic
-    Pose pose_b_c_;
-    double td_b_c_;
-    std::mutex extrinsic_mutex_;
-
-    bool is_use_visualization_{true};
-
-    // 优化选项
-    // Optimization options
-    bool optimize_estimate_extrinsic_;
-    bool optimize_estimate_td_;
-    double optimize_reprojection_error_std_;
-    int optimize_num_iterations_;
-    size_t optimize_windows_size_;
-
-    double reprojection_error_std_;
-
-    // 统计参数
-    // Statistic variables
-    int iterations_[2]{0};
-    double timecosts_[3]{0};
-    double outliers_[2]{0};
-
-    // 文件IO
-    // File IO
-    FileSaver::Ptr navfilesaver_;
-    FileSaver::Ptr imuerrfilesaver_;
-    FileSaver::Ptr ptsfilesaver_;
-    FileSaver::Ptr statfilesaver_;
-    FileSaver::Ptr extfilesaver_;
-    FileSaver::Ptr trajfilesaver_;
-
-    // 系统状态
-    // System state
-    std::atomic<GVINSState> gvinsstate_{GVINS_ERROR};
-};
-
-#endif // GVINS_GVINS_H
+ #ifndef GVINS_GVINS_H
+ #define GVINS_GVINS_H
+ 
+ #include "common/angle.h"
+ #include "common/timecost.h"
+ #include "fileio/filesaver.h"
+ #include "tracking/drawer.h"
+ #include "tracking/tracking.h"
+ 
+ #include "factors/marginalization_info.h"
+ #include "factors/reprojection_factor.h"
+ #include "preintegration/preintegration.h"
+ 
+ #include <ceres/ceres.h>
+ 
+ #include <atomic>
+ #include <condition_variable>
+ #include <iostream>
+ #include <thread>
+ #include <unordered_map>
+ 
+ class GVINS {
+ 
+ public:
+     enum GVINSState {
+         GVINS_ERROR                 = -1,
+         GVINS_INITIALIZING          = 0,
+         GVINS_INITIALIZING_INS      = 1,
+         GVINS_INITIALIZING_VIO      = 2,
+         GVINS_TRACKING_INITIALIZING = 3,
+         GVINS_TRACKING_NORMAL       = 4,
+         GVINS_TRACKING_LOST         = 5,
+     };
+ 
+     typedef std::shared_ptr<GVINS> Ptr;
+     typedef std::unique_lock<std::mutex> Lock;
+ 
+     GVINS() = delete;
+     explicit GVINS(const string &configfile, const string &outputpath, Drawer::Ptr drawer);
+ 
+     bool addNewImu(const IMU &imu);
+     bool addNewGnss(const GNSS &gnss);
+     bool addNewFrame(const Frame::Ptr &frame);
+ 
+     // [GPS Visualization] Update GPS path display only (without fusion)
+     void updateGnssVisualizationOnly(const GNSS &gnss);
+ 
+     void setFinished();
+ 
+     bool isRunning() const {
+         return !isfinished_;
+     }
+ 
+     GVINSState gvinsState() const {
+         return gvinsstate_;
+     }
+ 
+     Tracking::Ptr getTracking() const {
+         return tracking_;
+     }
+ 
+ private:
+     void parametersStatistic();
+ 
+     bool gvinsInitialization();
+     bool gvinsInitializationOptimization();
+ 
+     void addNewTimeNode(double time);
+     void addNewGnssTimeNode();
+     bool insertNewGnssTimeNode();
+     void addNewKeyFrameTimeNode();
+     bool removeUnusedTimeNode();
+     void constructPrior(bool is_zero_velocity);
+ 
+     void addStateParameters(ceres::Problem &problem);
+     void addReprojectionParameters(ceres::Problem &problem);
+ 
+     void addImuFactors(ceres::Problem &problem);
+     vector<std::pair<ceres::ResidualBlockId, GNSS *>> addGnssFactors(ceres::Problem &problem, bool isusekernel);
+     vector<ceres::ResidualBlockId> addReprojectionFactors(ceres::Problem &problem, bool isusekernel);
+     void doReintegration();
+ 
+     void updateParametersFromOptimizer();
+ 
+     int getStateDataIndex(double time);
+ 
+     bool gvinsOptimization();
+     bool gvinsMarginalization();
+     bool gvinsOutlierCulling();
+     bool gvinsRemoveAllSecondNewFrame();
+ 
+     void gnssOutlierCullingByChi2(ceres::Problem &problem,
+                                   vector<std::pair<ceres::ResidualBlockId, GNSS *>> &redisual_block);
+     static int removeReprojectionFactorsByChi2(ceres::Problem &problem, vector<ceres::ResidualBlockId> &residual_ids,
+                                                double chi2);
+ 
+     // [Simplified Static Detection] Detect vehicle static/dynamic state
+     void detectStaticState(const IMU &imu);
+ 
+     // [Hover-Aware Marginalization] Compute parallax between two keyframes for hover detection
+     double computeParallaxBetweenKeyFrames(const Frame::Ptr &frame1, const Frame::Ptr &frame2);
+ 
+     // Processing thread
+     void runFusion();
+     void runTracking();
+     void runOptimization();
+ 
+ private:
+     // 正常重力
+     // Normal gravity
+     const double NORMAL_GRAVITY = 9.80;
+ 
+     // INS窗口内的最大数量, 对于200Hz, 保留5秒数据
+     // Maximum INS data in the window
+     const size_t MAXIMUM_INS_NUMBER = 1000;
+ 
+     // 动态航向初始的最小速度
+     // Minimum velocity for GNSS/INS intializaiton
+     const double MINMUM_ALIGN_VELOCITY = 0.5;
+ 
+     // 允许的最小同步间隔
+     // Minimum synchronization interval for GNSS
+     const double MINMUM_SYNC_INTERVAL = 0.025;
+ 
+     // 允许的最长预积分时间
+     // Maximum length for IMU preintegration
+     const double MAXIMUM_PREINTEGRATION_LENGTH = 10.0;
+ 
+     // 先验标准差
+     // The prior STD for IMU biases
+     const double GYROSCOPE_BIAS_PRIOR_STD     = 7200 * D2R / 3600; // 7200 deg/hr
+     const double ACCELEROMETER_BIAS_PRIOR_STD = 20000 * 1.0e-5;    // 20000 mGal
+ 
+     // 优化参数, 使用deque容器管理, 移除头尾不会造成数据内存移动
+     // The state data in the sliding window
+     std::deque<std::shared_ptr<PreintegrationBase>> preintegrationlist_;
+     std::deque<IntegrationStateData> statedatalist_;
+     std::deque<GNSS> gnsslist_;
+     std::deque<double> timelist_;
+     std::unordered_map<ulong, double> invdepthlist_;
+     double extrinsic_[8]{0};
+ 
+     std::vector<double> unused_time_nodes_;
+ 
+     // 边缘化
+     // Marginalization variables
+     std::shared_ptr<MarginalizationInfo> last_marginalization_info_{nullptr};
+     std::vector<double *> last_marginalization_parameter_blocks_;
+ 
+     // 先验
+     // The prior
+     bool is_use_prior_{false};
+     double mix_prior_[18];
+     double mix_prior_std_[18];
+     double pose_prior_[7];
+     double pose_prior_std_[6];
+ 
+     // 融合对象
+     // GVINS fusion objects
+     Tracking::Ptr tracking_;
+     Map::Ptr map_;
+     Camera::Ptr camera_;
+     Drawer::Ptr drawer_;
+ 
+     // 多线程
+     // Multi-thread variables
+     std::thread drawer_thread_;
+     std::thread tracking_thread_;
+     std::thread optimization_thread_;
+     std::thread fusion_thread_;
+ 
+     std::atomic<bool> isoptimized_{false};
+     std::atomic<bool> isfinished_{false};
+     std::atomic<bool> isgnssready_{false};
+     std::atomic<bool> isframeready_{false};
+     std::atomic<bool> isgnssobs_{false};
+     std::atomic<bool> isvisualobs_{false};
+ 
+     // IMU处理
+     // Ins process
+     std::mutex imu_buffer_mutex_;
+     std::mutex fusion_mutex_;
+     std::condition_variable fusion_sem_;
+     std::mutex ins_mutex_;
+ 
+     // 跟踪处理
+     // Tracking process
+     std::mutex frame_buffer_mutex_;
+     std::mutex tracking_mutex_;
+     std::condition_variable tracking_sem_;
+     std::mutex keyframes_mutex_;
+ 
+     // 优化处理
+     // Optimization process
+     std::mutex optimization_mutex_;
+     std::mutex state_mutex_;
+     std::condition_variable optimization_sem_;
+ 
+     // 传感器数据
+     // GVINS sensor data
+     std::queue<Frame::Ptr> keyframes_;
+     GNSS gnss_{0}, last_gnss_{0}, last_last_gnss_{0};
+ 
+     std::queue<Frame::Ptr> frame_buffer_;
+ 
+     std::queue<IMU> imu_buffer_;
+     std::deque<std::pair<IMU, IntegrationState>> ins_window_;
+ 
+     // IMU参数
+     // IMU parameters
+     std::shared_ptr<IntegrationParameters> integration_parameters_;
+     Preintegration::PreintegrationOptions preintegration_options_;
+     IntegrationConfiguration integration_config_;
+ 
+     double imudatarate_{200};
+     double imudatadt_{0.005};
+     size_t reserved_ins_num_;
+ 
+     Vector3d antlever_;
+ 
+     // Store original IMU noise parameters
+     double original_gyr_arw_{0.0};
+     double original_acc_vrw_{0.0};
+ 
+     // 初始化信息
+     // Initialization
+     int initlength_;
+ 
+     // 外参
+     // Camera-IMU extrinsic
+     Pose pose_b_c_;
+     double td_b_c_;
+     std::mutex extrinsic_mutex_;
+ 
+     bool is_use_visualization_{true};
+ 
+     // 优化选项
+     // Optimization options
+     bool optimize_estimate_extrinsic_;
+     bool optimize_estimate_td_;
+     double optimize_reprojection_error_std_;
+     int optimize_num_iterations_;
+     size_t optimize_windows_size_;
+ 
+     double reprojection_error_std_;
+ 
+     // 统计参数
+     // Statistic variables
+     int iterations_[2]{0};
+     double timecosts_[3]{0};
+     double outliers_[2]{0};
+ 
+     // 文件IO
+     // File IO
+     FileSaver::Ptr navfilesaver_;
+     FileSaver::Ptr imuerrfilesaver_;
+     FileSaver::Ptr ptsfilesaver_;
+     FileSaver::Ptr statfilesaver_;
+     FileSaver::Ptr extfilesaver_;
+     FileSaver::Ptr trajfilesaver_;
+ 
+     // 系统状态
+     // System state
+     std::atomic<GVINSState> gvinsstate_{GVINS_ERROR};
+ 
+     // [Simplified Static Detection] Minimal implementation for hover-aware marginalization
+     bool is_vehicle_static_{false};
+ 
+     // Static detection state machine
+     int static_confirm_counter_{0};
+     int dynamic_confirm_counter_{0};
+     double static_start_time_{0.0};
+     double last_dynamic_time_{0.0};
+ 
+     // [Static GNSS Filtering] Record GNSS position when entering static mode
+     Vector3d static_gnss_position_{0, 0, 0};
+     bool static_gnss_initialized_{false};
+ 
+     // [Static-to-Dynamic Recovery] Gradual recovery after leaving static mode
+     int gnss_recovery_counter_{0};  // Count GNSS observations after leaving static
+     int gnss_recovery_window_{6};   // Need 6 GNSS to fully recover (～6 seconds)
+ 
+     // Static detection parameters (configurable)
+     bool use_static_detection_{false};
+     int imu_check_window_size_{10};
+     double default_gyro_threshold_{0.05};    // rad/s
+     double default_accl_threshold_{0.1};     // m/s^2
+     int static_confirm_frames_{20};
+     int dynamic_confirm_frames_{5};
+     double min_static_duration_{1.5};        // seconds
+     double min_dynamic_duration_{1.5};       // seconds
+     double static_gnss_filter_threshold_{1.0};      // meters - reject GNSS jumps > 5m during static mode
+     double recovery_gnss_filter_threshold_{5.0};   // meters - relaxed threshold during recovery period
+ 
+     // IMU data buffer for motion detection
+     struct ImuCheckValue {
+         double timestamp;
+         double acce_change;  // |a_k - a_{k-1}|
+         double gyro_change;  // |g_k - g_{k-1}|
+     };
+     std::deque<ImuCheckValue> imu_check_queue_;
+     IMU last_imu_data_;
+     bool has_last_imu_{false};
+ };
+ 
+ #endif // GVINS_GVINS_H

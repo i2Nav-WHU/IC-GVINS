@@ -1,12 +1,19 @@
 <launch>
     <arg name="configfile" default=""/>
 
+    <node name="yolo_mask_node" pkg="ic_gvins" type="yolo_mask_node.py" output="screen">
+        <param name="model_path" value="$(find ic_gvins)/models/yolo11n-seg.engine"/>
+        <param name="image_topic" value="/cam0"/>
+        <param name="mask_topic" value="/yolo/mask"/>
+        <param name="confidence_threshold" value="0.3"/>
+    </node>
+
     <node name="ic_gvins_node" pkg="ic_gvins" type="ic_gvins_ros" output="screen">
         <param name="imu_topic" value="/imu0"/>
         <param name="gnss_topic" value="/gnss0"/>
         <param name="image_topic" value="/cam0"/>
 
-        <param name="configfile" value="$(arg configfile)"/>
+        <param name="configfile" value="/home/felix/ws_vins/src/IC-GVINS/config/urban38.yaml"/>
     </node>
 
     <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_broadcaster"

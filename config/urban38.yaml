@@ -1,0 +1,125 @@
+# IC-GVINS多源融合定位算法配置文件
+
+# 结果输出路径
+# Output directory
+outputpath: "/home/felix/vins_output/IC-GVINS/urban38"
+is_make_outputdir: true
+
+# 时间信息, s
+# Time length for GNSS/INS intialization
+initlength: 1
+
+# IMU原始数据频率, Hz
+# IMU sample rate
+imudatarate: 100
+
+# 考虑地球自转补偿项
+# Consider the Earth rotation
+iswithearth: true
+
+# 天线杆臂, IMU前右下方向, m
+# GNSS lever-arm in IMU body frame (front-right-down)
+antlever: [0.07, 0, -0.23]
+
+# IMU噪声建模参数
+# IMU noise parameters
+#imumodel:
+#    arw: 0.2        # deg/sqrt(hr)
+#    vrw: 0.5        # m/s/sqrt(hr)
+#    gbstd: 10.0     # deg/hr
+#    abstd: 150.0     # mGal
+#    corrtime: 1.0   # hr
+
+#imu parameters       The more accurate parameters you provide, the better performance
+gyr_n: 0.01         # gyroscope measurement noise standard deviation.
+gyr_w: 0.005       # gyroscope bias random work noise standard deviation.
+acc_n: 0.01          # accelerometer measurement noise standard deviation.
+acc_w: 0.005       # accelerometer bias random work noise standard deviation.
+g_norm: 9.799     # gravity magnitude
+
+# IMU檢測窗口相關參數
+use_static_detection: true              # 是否啟用動靜檢測功能
+imu_check_window_size: 15               # IMU檢測窗口大小 (預設: 10)
+default_gyro_threshold: 0.005           # 陀螺儀變化閾值 (預設: 0.008)
+default_accl_threshold: 0.08            # 加速度計變化閾值 (預設: 0.18)
+# 狀態確認相關參數
+static_confirm_frames: 30               # 靜止狀態確認所需幀數 (預設: 20)
+dynamic_confirm_frames: 20              # 動態狀態確認所需幀數 (預設: 15)
+
+# GNSS中断配置
+# GNSS outage configurations, the GNSS will not be used after the gnssoutagetime 
+isusegnssoutage: false
+gnssoutagetime: 364461.5
+
+# 固定阈值GNSS抗差
+# A fixed threshold (STD, m) for GNSS outlier culling
+# 注意：threshold只影響融合（odometry計算），不影響RViz顯示
+#      所有GPS都會在RViz中顯示（包括被threshold過濾的），用於診斷
+#      建議設置為較嚴格值（如5-20m）以保證融合精度
+gnssthreshold: 20
+
+# 是否开启可视化
+# Use visualization
+is_use_visualization: true
+
+# 跟踪
+# Tracking configurations
+track_check_histogram: false    # 直方图检查, 避免出现光照变化较大的图像 (Check histogram for drastic illumulation change)
+track_min_parallax: 15          # 关键帧最小像素视差 (The minmum parallax in pixels to choose a keyframe)
+track_max_interval: 0.5           # 最大的关键帧间隔, 超过则插入观测帧, s (The maximum lenght to choose a observation frame)
+track_max_features: 300         # 最大提取特征数量 (The maximum features to detect, may be more or less, see tracking.cc)
+
+use_dynamic_mask: true              # 是否使用動態物件遮罩
+dynamic_mask_topic: "/yolo/mask"    # YOLO 遮罩 topic
+mask_buffer_size: 5                 # 遮罩緩衝區大小
+mask_time_tolerance: 0.02           # 時間同步容差（秒）
+
+# 优化
+# Optimization configurations
+reprojection_error_std: 1.5         # 像素重投影误差 (The reprojection error std for optimizition and outlier culling)
+optimize_windows_size: 15          # 滑动窗口大小 (The size of the sliding window, number of the keyframes )
+optimize_num_iterations: 20         # 优化迭代次数 (The iterations in total)
+optimize_estimate_extrinsic: false   # 是否估计相机和IMU的外参 (Estimate the extrinsic)
+optimize_estimate_td: true          # 否估计相机和IMU之间的时间间隔 (Estimate the time delay)
+
+# [DEBUG] 調試選項
+# Debug options
+debug_disable_static_culling: false  # 使用 conservative culling (3x threshold)，而非完全禁用
+
+# Camera parameters
+cam0:
+    # 内参 [fx, fy, cx, cy(, skew)]
+    # Intrinsic parameters, pinhole model
+    intrinsic:
+        [
+            8.1640221474060002e+02,
+            8.1738388562809996e+02,
+            6.0882658427579997e+02,
+            2.6668865652440002e+02,
+            -2.3882017757999998e+00,
+        ]
+
+    # 畸变参数 [k1, k2, p1, p2(, k3)]
+    # Distortion parameters
+    distortion:
+        [
+            -5.0040485799999999e-02,
+            1.2001217170000000e-01,
+            -6.2598060000000004e-04,
+            -1.1825064000000000e-03,
+            -6.3505207999999994e-02,
+        ]
+
+    # 图像分辨率
+    # Resolution
+    resolution: [1280, 560]
+
+    # 相机IMU外参 (Camera-IMU extrinsic)
+    # Pb = q_b_c * Pc + t_b_c
+    # q (x, y, z, w)
+    q_b_c: [0.49452151768306785, 0.4977818081111032, 0.5055845943507494, 0.5020417891144757]
+    t_b_c: [1.71239, -0.247401, 0.11589]
+
+    # IMU和相机时间延时 (The time delay between the IMU and camera)
+    # t_i = t_c + td
+    td_b_c: 0.0

@@ -20,63 +20,76 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "tracking/mappoint.h"
-#include "tracking/frame.h"
-
-MapPoint::MapPoint(ulong id, const std::shared_ptr<Frame> &ref_frame, Vector3d pos, cv::Point2f keypoint, double depth,
-                   MapPointType type)
-    : pos_(std::move(pos))
-    , depth_(depth)
-    , ref_frame_keypoint_(std::move(keypoint))
-    , ref_frame_(ref_frame)
-    , optimized_times_(0)
-    , used_times_(0)
-    , observed_times_(0)
-    , isoutlier_(false)
-    , id_(id)
-    , mappoint_type_(type) {
-
-    // 防止深度错误
-    if ((depth_ < NEAREST_DEPTH) || (depth_ > FARTHEST_DEPTH)) {
-        depth_ = DEFAULT_DEPTH;
-    }
-}
-
-MapPoint::Ptr MapPoint::createMapPoint(std::shared_ptr<Frame> &ref_frame, Vector3d &pos, cv::Point2f &feature,
-                                       double depth, MapPointType type) {
-    static ulong factory_id_ = 0;
-    return std::make_shared<MapPoint>(factory_id_++, ref_frame, pos, feature, depth, type);
-}
-
-void MapPoint::addObservation(const Feature::Ptr &feature) {
-    std::unique_lock<std::mutex> lock(mappoint_mutex_);
-
-    observations_.push_back(feature);
-    observed_times_++;
-}
-
-void MapPoint::setReferenceFrame(const std::shared_ptr<Frame> &frame, Vector3d pos, cv::Point2f keypoint, double depth,
-                                 MapPointType type) {
-    std::unique_lock<std::mutex> lock(mappoint_mutex_);
-
-    depth_tmp_ = depth;
-    if (depth_tmp_ < 1.0) {
-        depth_tmp_ = DEFAULT_DEPTH;
-    }
-
-    pos_tmp_                = std::move(pos);
-    ref_frame_tmp_          = frame;
-    ref_frame_keypoint_tmp_ = std::move(keypoint);
-    mappoint_type_tmp_      = type;
-    isneedupdate_           = true;
-}
-
-ulong MapPoint::referenceFrameId() {
-    std::unique_lock<std::mutex> lock(mappoint_mutex_);
-    auto frame = ref_frame_.lock();
-    if (frame) {
-        return frame->id();
-    }
-
-    return 0;
-}
+ #include "tracking/mappoint.h"
+ #include "tracking/frame.h"
+ 
+ MapPoint::MapPoint(ulong id, const std::shared_ptr<Frame> &ref_frame, Vector3d pos, cv::Point2f keypoint, double depth,
+                    MapPointType type)
+     : pos_(std::move(pos))
+     , depth_(depth)
+     , ref_frame_keypoint_(std::move(keypoint))
+     , ref_frame_(ref_frame)
+     , optimized_times_(0)
+     , used_times_(0)
+     , observed_times_(0)
+     , isoutlier_(false)
+     , id_(id)
+     , mappoint_type_(type) {
+ 
+     // 防止深度错误
+     if ((depth_ < NEAREST_DEPTH) || (depth_ > FARTHEST_DEPTH)) {
+         depth_ = DEFAULT_DEPTH;
+     }
+ }
+ 
+ MapPoint::Ptr MapPoint::createMapPoint(std::shared_ptr<Frame> &ref_frame, Vector3d &pos, cv::Point2f &feature,
+                                        double depth, MapPointType type) {
+     static ulong factory_id_ = 0;
+     return std::make_shared<MapPoint>(factory_id_++, ref_frame, pos, feature, depth, type);
+ }
+ 
+ void MapPoint::addObservation(const Feature::Ptr &feature) {
+     std::unique_lock<std::mutex> lock(mappoint_mutex_);
+ 
+     observations_.push_back(feature);
+     observed_times_++;
+ }
+ 
+ void MapPoint::setReferenceFrame(const std::shared_ptr<Frame> &frame, Vector3d pos, cv::Point2f keypoint, double depth,
+                                  MapPointType type) {
+     std::unique_lock<std::mutex> lock(mappoint_mutex_);
+ 
+     depth_tmp_ = depth;
+     if (depth_tmp_ < 1.0) {
+         depth_tmp_ = DEFAULT_DEPTH;
+     }
+ 
+     pos_tmp_                = std::move(pos);
+     ref_frame_tmp_          = frame;
+     ref_frame_keypoint_tmp_ = std::move(keypoint);
+     mappoint_type_tmp_      = type;
+     isneedupdate_           = true;
+ }
+ 
+ ulong MapPoint::referenceFrameId() {
+     std::unique_lock<std::mutex> lock(mappoint_mutex_);
+     auto frame = ref_frame_.lock();
+     if (frame) {
+         return frame->id();
+     }
+ 
+     return 0;
+ }
+ 
+ void MapPoint::removeObservation(const std::shared_ptr<Frame> &frame) {
+     std::unique_lock<std::mutex> lock(mappoint_mutex_);
+     observations_.erase(
+         std::remove_if(observations_.begin(), observations_.end(),
+                       [&frame](const std::weak_ptr<Feature> &obs) {
+                           auto feat = obs.lock();
+                           if (!feat) return true;  // Remove expired weak_ptr
+                           auto obs_frame = feat->getFrame();
+                           return obs_frame && (obs_frame->keyFrameId() == frame->keyFrameId());
+                       }),
+         observations_.end());
+ }

@@ -20,46 +20,49 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef GVINS_DRAWER_H
-#define GVINS_DRAWER_H
-
-#include "tracking/frame.h"
-#include "tracking/map.h"
-
-#include <memory>
-
-class Drawer {
-
-public:
-    typedef std::shared_ptr<Drawer> Ptr;
-
-    virtual ~Drawer() = default;
-
-    virtual void run()         = 0;
-    virtual void setFinished() = 0;
-
-    void setMap(Map::Ptr map) {
-        map_ = std::move(map);
-    };
-
-    // 地图
-    virtual void addNewFixedMappoint(Vector3d point)    = 0;
-    virtual void updateMap(const Eigen::Matrix4d &pose) = 0;
-
-    // 跟踪图像
-    virtual void updateFrame(Frame::Ptr frame)                                            = 0;
-    virtual void updateTrackedMapPoints(vector<cv::Point2f> map, vector<cv::Point2f> matched,
-                                        vector<MapPointType> mappoint_type)               = 0;
-    virtual void updateTrackedRefPoints(vector<cv::Point2f> ref, vector<cv::Point2f> cur) = 0;
-
-protected:
-    void drawTrackingImage(const Mat &raw, Mat &drawed);
-
-protected:
-    Map::Ptr map_;
-
-    vector<cv::Point2f> pts2d_cur_, pts2d_ref_, pts2d_map_, pts2d_matched_;
-    vector<MapPointType> mappoint_type_;
-};
-
-#endif // GVINS_DRAWER_H
+ #ifndef GVINS_DRAWER_H
+ #define GVINS_DRAWER_H
+ 
+ #include "tracking/frame.h"
+ #include "tracking/map.h"
+ 
+ #include <memory>
+ 
+ class Drawer {
+ 
+ public:
+     typedef std::shared_ptr<Drawer> Ptr;
+ 
+     virtual ~Drawer() = default;
+ 
+     virtual void run()         = 0;
+     virtual void setFinished() = 0;
+ 
+     void setMap(Map::Ptr map) {
+         map_ = std::move(map);
+     };
+ 
+     // 地图
+     virtual void addNewFixedMappoint(Vector3d point)    = 0;
+     virtual void updateMap(const Eigen::Matrix4d &pose) = 0;
+ 
+     // GPS路径 (输入已经是ENU坐标)
+     virtual void updateGnssPosition(const Eigen::Vector3d &enu) = 0;
+ 
+     // 跟踪图像
+     virtual void updateFrame(Frame::Ptr frame)                                            = 0;
+     virtual void updateTrackedMapPoints(vector<cv::Point2f> map, vector<cv::Point2f> matched,
+                                         vector<MapPointType> mappoint_type)               = 0;
+     virtual void updateTrackedRefPoints(vector<cv::Point2f> ref, vector<cv::Point2f> cur) = 0;
+ 
+ protected:
+     void drawTrackingImage(const Mat &raw, Mat &drawed);
+ 
+ protected:
+     Map::Ptr map_;
+ 
+     vector<cv::Point2f> pts2d_cur_, pts2d_ref_, pts2d_map_, pts2d_matched_;
+     vector<MapPointType> mappoint_type_;
+ };
+ 
+ #endif // GVINS_DRAWER_H

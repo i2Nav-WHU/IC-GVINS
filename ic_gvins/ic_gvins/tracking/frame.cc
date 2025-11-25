@@ -20,34 +20,34 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "tracking/frame.h"
+ #include "tracking/frame.h"
 
-Frame::Frame(ulong id, double stamp, Mat image)
-    : id_(id)
-    , keyframe_id_(0)
-    , stamp_(stamp)
-    , image_(std::move(image))
-    , iskeyframe_(false) {
-    features_.clear();
-    unupdated_mappoints_.clear();
-
-    image_.copyTo(raw_image_);
-}
-
-Frame::Ptr Frame::createFrame(double stamp, const Mat &image) {
-    static ulong factory_id = 0;
-
-    return std::make_shared<Frame>(factory_id++, stamp, image);
-}
-
-void Frame::setKeyFrame(int state) {
-    std::unique_lock<std::mutex> lock(frame_mutex_);
-
-    static ulong keyframe_factory_id = 0;
-
-    if (!iskeyframe_) {
-        iskeyframe_     = true;
-        keyframe_id_    = keyframe_factory_id++;
-        keyframe_state_ = state;
-    }
-}
+ Frame::Frame(ulong id, double stamp, Mat image)
+     : id_(id)
+     , keyframe_id_(0)
+     , stamp_(stamp)
+     , image_(std::move(image))
+     , iskeyframe_(false) {
+     features_.clear();
+     unupdated_mappoints_.clear();
+ 
+     image_.copyTo(raw_image_);
+ }
+ 
+ Frame::Ptr Frame::createFrame(double stamp, const Mat &image) {
+     static ulong factory_id = 0;
+ 
+     return std::make_shared<Frame>(factory_id++, stamp, image);
+ }
+ 
+ void Frame::setKeyFrame(int state) {
+     std::unique_lock<std::mutex> lock(frame_mutex_);
+ 
+     static ulong keyframe_factory_id = 0;
+ 
+     if (!iskeyframe_) {
+         iskeyframe_     = true;
+         keyframe_id_    = keyframe_factory_id++;
+         keyframe_state_ = state;
+     }
+ }
