@@ -349,366 +349,325 @@
  }
  
  bool Tracking::trackMappoint() {
- 
-     // 上一帧中的路标点
-     mappoint_matched_.clear();
-     vector<cv::Point2f> pts2d_map, pts2d_matched, pts2d_map_undis;
-     vector<MapPointType> mappoint_type;
-     auto features = frame_pre_->features();
-     for (auto &feature : features) {
-         auto mappoint = feature.second->getMapPoint();
-         if (mappoint && !mappoint->isOutlier()) {
-             mappoint_matched_.push_back(mappoint);
-             pts2d_map_undis.push_back(feature.second->keyPoint());
-             pts2d_map.push_back(feature.second->distortedKeyPoint());
-             mappoint_type.push_back(mappoint->mapPointType());
- 
-             // 预测的特征点
-             auto pixel = camera_->world2pixel(mappoint->pos(), frame_cur_->pose());
- 
-             pts2d_matched.emplace_back(pixel);
-         }
-     }
-     if (pts2d_matched.empty()) {
-         LOGE << "No feature with mappoint in previous frame";
-         return false;
-     }
- 
-     // 预测的特征点像素坐标添加畸变, 用于跟踪
-     camera_->distortPoints(pts2d_matched);
- 
-     vector<uint8_t> status, status_reverse;
-     vector<float> error;
-     vector<cv::Point2f> pts2d_reverse = pts2d_map;
- 
-     // 正向光流
-     cv::calcOpticalFlowPyrLK(frame_pre_->image(), frame_cur_->image(), pts2d_map, pts2d_matched, status, error,
-                              cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
-                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
-                              cv::OPTFLOW_USE_INITIAL_FLOW);
-     // 反向光流
-     cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_matched, pts2d_reverse, status_reverse,
-                              error, cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
-                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
-                              cv::OPTFLOW_USE_INITIAL_FLOW);
- 
-     // 跟踪失败的
-     // [Static Mode] Use relaxed threshold during static periods to avoid noise-induced tracking loss
-     double reverse_check_threshold = is_vehicle_static_ ? 1.5 : 0.5;
 
-     // [YOLO Mask] Count how many points would be filtered before applying
-     int yolo_would_filter = 0;
-     bool use_yolo_filtering = false;
-     {
-         std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
-         if (!yolo_mask_.empty() && yolo_mask_.size() == camera_->size()) {
-             // Count valid tracked points that would be filtered by YOLO
-             int valid_count = 0;
-             for (size_t k = 0; k < status.size(); k++) {
-                 if (status[k] && status_reverse[k] && !isOnBorder(pts2d_matched[k]) &&
-                     (ptsDistance(pts2d_reverse[k], pts2d_map[k]) < reverse_check_threshold)) {
-                     valid_count++;
-                     int x = static_cast<int>(pts2d_matched[k].x);
-                     int y = static_cast<int>(pts2d_matched[k].y);
-                     if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
-                         if (yolo_mask_.at<uint8_t>(y, x) <= 127) {
-                             yolo_would_filter++;
-                         }
-                     }
-                 }
-             }
-             // Only use YOLO filtering if it won't filter too many points (< 50%)
-             use_yolo_filtering = (valid_count > 20) && (yolo_would_filter < valid_count / 2);
-             if (!use_yolo_filtering && yolo_would_filter > 0) {
-                 LOGW << "[YOLO] Skipping mappoint filtering - would reject " << yolo_would_filter
-                      << "/" << valid_count << " points (" << (100.0 * yolo_would_filter / valid_count) << "%)";
-             }
-         }
-     }
- 
-     // [Debug] Track filtering statistics
-     int forward_ok = 0, reverse_ok = 0, distance_ok = 0, yolo_filtered = 0, final_ok = 0;
+    // 上一帧中的路标点
+    mappoint_matched_.clear();
+    vector<cv::Point2f> pts2d_map, pts2d_matched, pts2d_map_undis;
+    vector<MapPointType> mappoint_type;
+    auto features = frame_pre_->features();
+    for (auto &feature : features) {
+        auto mappoint = feature.second->getMapPoint();
+        if (mappoint && !mappoint->isOutlier()) {
+            mappoint_matched_.push_back(mappoint);
+            pts2d_map_undis.push_back(feature.second->keyPoint());
+            pts2d_map.push_back(feature.second->distortedKeyPoint());
+            mappoint_type.push_back(mappoint->mapPointType());
 
-     // [Protection Mode] Use very relaxed threshold in static mode or when mappoints are scarce
-     bool protection_mode = is_vehicle_static_ || (status.size() < 20);
-     double protection_threshold = 2.5;  // Very relaxed: tolerate more noise/drift
+            // 预测的特征点
+            auto pixel = camera_->world2pixel(mappoint->pos(), frame_cur_->pose());
 
-     // Select threshold based on mode
-     double effective_threshold = protection_mode ? protection_threshold : reverse_check_threshold;
+            pts2d_matched.emplace_back(pixel);
+        }
+    }
+    if (pts2d_matched.empty()) {
+        LOGE << "No feature with mappoint in previous frame";
+        return false;
+    }
 
-     for (size_t k = 0; k < status.size(); k++) {
-         if (status[k]) forward_ok++;
-         if (status_reverse[k]) reverse_ok++;
+    // 预测的特征点像素坐标添加畸变, 用于跟踪
+    camera_->distortPoints(pts2d_matched);
 
-         // Apply bidirectional check with appropriate threshold
-         bool passes_tracking = status[k] && status_reverse[k] && !isOnBorder(pts2d_matched[k]) &&
-                                (ptsDistance(pts2d_reverse[k], pts2d_map[k]) < effective_threshold);
-         if (passes_tracking) distance_ok++;
+    vector<uint8_t> status, status_reverse;
+    vector<float> error;
+    vector<cv::Point2f> pts2d_reverse = pts2d_map;
 
-         if (passes_tracking) {
-             // [YOLO Mask] Check if tracked point is on dynamic object (only if safe to do so)
-             bool on_static_region = true;
-             if (use_yolo_filtering) {
-                 std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
-                 int x = static_cast<int>(pts2d_matched[k].x);
-                 int y = static_cast<int>(pts2d_matched[k].y);
-                 if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
-                     // YOLO mask: 0=dynamic, 255=static
-                     on_static_region = (yolo_mask_.at<uint8_t>(y, x) > 127);
-                     if (!on_static_region) yolo_filtered++;
-                 }
-             }
-             status[k] = on_static_region ? 1 : 0;
-             if (status[k]) final_ok++;
-         } else {
-             status[k] = 0;
-         }
-     }
+    // 正向光流
+    cv::calcOpticalFlowPyrLK(frame_pre_->image(), frame_cur_->image(), pts2d_map, pts2d_matched, status, error,
+                             cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
+                             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
+                             cv::OPTFLOW_USE_INITIAL_FLOW);
+    // 反向光流
+    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_matched, pts2d_reverse, status_reverse,
+                             error, cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
+                             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
+                             cv::OPTFLOW_USE_INITIAL_FLOW);
 
-     if (protection_mode) {
-         LOGI << "Mappoint tracking: " << status.size() << " candidates -> "
-              << "forward=" << forward_ok << ", reverse=" << reverse_ok
-              << ", distance(<" << protection_threshold << "px-PROTECTED), yolo_filtered=" << yolo_filtered
-              << ", final=" << final_ok
-              << (is_vehicle_static_ ? " [STATIC]" : " [DYNAMIC]") << " [PROTECTED]";
-     } else {
-         LOGI << "Mappoint tracking: " << status.size() << " candidates -> "
-              << "forward=" << forward_ok << ", reverse=" << reverse_ok
-              << ", distance(<" << reverse_check_threshold << "px)=" << distance_ok
-              << ", yolo_filtered=" << yolo_filtered << ", final=" << final_ok
-              << (is_vehicle_static_ ? " [STATIC]" : " [DYNAMIC]");
-     }
+    // 跟踪失败的
+    double reverse_check_threshold = 0.5;
 
+    // [Static Strategy] 靜止時的動態過濾閾值
+    // 如果車不動，點位移超過 1.5 pixel，視為動態物體 -> 殺掉
+    // 1.5 px 是一個經驗值，既能容忍微小震動，又能殺掉移動的車
+    const double static_moving_threshold = 1.5; 
 
-     reduceVector(pts2d_map, status);
-     reduceVector(pts2d_matched, status);
-     reduceVector(mappoint_matched_, status);
-     reduceVector(mappoint_type, status);
-     reduceVector(pts2d_map_undis, status);
- 
-     if (pts2d_matched.empty()) {
-         LOGE << "Track previous with mappoint failed";
-         // 清除上一帧的跟踪
-         if (is_use_visualization_) {
-             drawer_->updateTrackedMapPoints({}, {}, {});
-         }
-         parallax_map_        = 0;
-         parallax_map_counts_ = 0;
-         return false;
-     }
- 
-     // 匹配后的点, 需要重新矫正畸变
-     auto pts2d_matched_undis = pts2d_matched;
-     camera_->undistortPoints(pts2d_matched_undis);
- 
-     // 匹配的3D-2D
-     frame_cur_->clearFeatures();
-     tracked_mappoint_.clear();
- 
-     double dt = frame_cur_->stamp() - frame_pre_->stamp();
-     for (size_t k = 0; k < pts2d_matched_undis.size(); k++) {
-         auto mappoint = mappoint_matched_[k];
- 
-         // 将3D-2D匹配到的landmarks指向到当前帧
-         auto velocity = (camera_->pixel2cam(pts2d_matched_undis[k]) - camera_->pixel2cam(pts2d_map_undis[k])) / dt;
-         auto feature  = Feature::createFeature(frame_cur_, {velocity.x(), velocity.y()}, pts2d_matched_undis[k],
-                                                pts2d_matched[k], FEATURE_MATCHED);
-         mappoint->addObservation(feature);
-         feature->addMapPoint(mappoint);
-         frame_cur_->addFeature(mappoint->id(), feature);
- 
-         // 用于更新使用次数
-         tracked_mappoint_.push_back(mappoint);
-     }
- 
-     // 路标点跟踪情况
-     if (is_use_visualization_) {
-         drawer_->updateTrackedMapPoints(pts2d_map, pts2d_matched, mappoint_type);
-     }
- 
-     parallax_map_counts_ = parallaxFromReferenceMapPoints(parallax_map_);
- 
-     LOGI << "Track " << tracked_mappoint_.size() << " map points";
- 
-     return true;
- }
- 
- bool Tracking::trackReferenceFrame() {
- 
-     if (pts2d_ref_.empty()) {
-         LOGW << "No new feature in previous frame " << Logging::doubleData(frame_cur_->stamp());
-         return false;
-     }
- 
-     // 补偿旋转预测
-     Matrix3d r_cur_pre = frame_cur_->pose().R.transpose() * frame_pre_->pose().R;
- 
-     // 原始畸变补偿
-     auto pts2d_new_undis = pts2d_new_;
-     camera_->undistortPoints(pts2d_new_undis);
- 
-     pts2d_cur_.clear();
-     for (const auto &pp_pre : pts2d_new_undis) {
-         Vector3d pc_pre = camera_->pixel2cam(pp_pre);
-         Vector3d pc_cur = r_cur_pre * pc_pre;
- 
-         // 添加畸变
-         auto pp_cur = camera_->distortCameraPoint(pc_cur);
-         pts2d_cur_.emplace_back(pp_cur);
-     }
- 
-     // 跟踪参考帧
-     vector<uint8_t> status, status_reverse;
-     vector<float> error;
-     vector<cv::Point2f> pts2d_reverse = pts2d_new_;
- 
-     // 正向光流
-     cv::calcOpticalFlowPyrLK(frame_pre_->image(), frame_cur_->image(), pts2d_new_, pts2d_cur_, status, error,
-                              cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
-                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
-                              cv::OPTFLOW_USE_INITIAL_FLOW);
- 
-     // 反向光流
-     cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_cur_, pts2d_reverse, status_reverse, error,
-                              cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
-                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
-                              cv::OPTFLOW_USE_INITIAL_FLOW);
- 
-     // 剔除跟踪失败的, 正向反向跟踪在0.5个像素以内
-     // [Static Mode] Use relaxed threshold during static periods to avoid noise-induced tracking loss
-     double reverse_check_threshold = is_vehicle_static_ ? 1.5 : 0.5;
+    // [YOLO Mask] 
+    bool use_yolo_filtering = false;
+    {
+        std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
+        if (!yolo_mask_.empty() && yolo_mask_.size() == camera_->size()) {
+            use_yolo_filtering = true;
+        }
+    }
 
-     // [YOLO Mask] Count how many reference points would be filtered
-     int ref_yolo_would_filter = 0;
-     bool use_ref_yolo_filtering = false;
-     {
-         std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
-         if (!yolo_mask_.empty() && yolo_mask_.size() == camera_->size()) {
-             int valid_count = 0;
-             for (size_t k = 0; k < status.size(); k++) {
-                 if (status[k] && status_reverse[k] && !isOnBorder(pts2d_cur_[k]) &&
-                     (ptsDistance(pts2d_reverse[k], pts2d_new_[k]) < reverse_check_threshold)) {
-                     valid_count++;
-                     int x = static_cast<int>(pts2d_cur_[k].x);
-                     int y = static_cast<int>(pts2d_cur_[k].y);
-                     if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
-                         if (yolo_mask_.at<uint8_t>(y, x) <= 127) {
-                             ref_yolo_would_filter++;
-                         }
-                     }
-                 }
-             }
-             // Only use YOLO filtering if it won't filter too many points
-             use_ref_yolo_filtering = (valid_count > 20) && (ref_yolo_would_filter < valid_count / 2);
-             if (!use_ref_yolo_filtering && ref_yolo_would_filter > 0) {
-                 LOGW << "[YOLO] Skipping reference filtering - would reject " << ref_yolo_would_filter
-                      << "/" << valid_count << " points (" << (100.0 * ref_yolo_would_filter / valid_count) << "%)";
-             }
-         }
-     }
- 
-     // [Protection Mode] Use relaxed threshold (2.5px) in static mode or when features are scarce
-     bool protection_mode = is_vehicle_static_ || (status.size() < 20);
-     double protection_threshold = 2.5;  // Very relaxed: tolerate more noise/drift
-     double effective_threshold = protection_mode ? protection_threshold : reverse_check_threshold;
+    int static_dynamic_removed = 0; 
 
-     for (size_t k = 0; k < status.size(); k++) {
-         // Apply bidirectional check with appropriate threshold (relaxed in protection mode)
-         bool passes_tracking = status[k] && status_reverse[k] && !isOnBorder(pts2d_cur_[k]) &&
-                                (ptsDistance(pts2d_reverse[k], pts2d_new_[k]) < effective_threshold);
+    for (size_t k = 0; k < status.size(); k++) {
+        bool passes_tracking = status[k] && status_reverse[k] && !isOnBorder(pts2d_matched[k]) &&
+                               (ptsDistance(pts2d_reverse[k], pts2d_map[k]) < reverse_check_threshold);
 
-         if (passes_tracking) {
-             // [YOLO Mask] Check if tracked point is on dynamic object (only if safe)
-             bool on_static_region = true;
-             if (use_ref_yolo_filtering) {
-                 std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
-                 int x = static_cast<int>(pts2d_cur_[k].x);
-                 int y = static_cast<int>(pts2d_cur_[k].y);
-                 if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
-                     // YOLO mask: 0=dynamic, 255=static
-                     on_static_region = (yolo_mask_.at<uint8_t>(y, x) > 127);
-                 }
-             }
-             status[k] = on_static_region ? 1 : 0;
-         } else {
-             status[k] = 0;
-         }
-     }
-     reduceVector(pts2d_ref_, status);
-     reduceVector(pts2d_cur_, status);
-     reduceVector(pts2d_new_, status);
-     reduceVector(pts2d_ref_frame_, status);
-     reduceVector(velocity_ref_, status);
- 
-     if (pts2d_ref_.empty()) {
-         LOGW << "No new feature in previous frame";
-         drawer_->updateTrackedRefPoints({}, {});
-         return false;
-     }
- 
-     // 原始带畸变的角点
-     pts2d_new_undis      = pts2d_new_;
-     auto pts2d_cur_undis = pts2d_cur_;
- 
-     camera_->undistortPoints(pts2d_new_undis);
-     camera_->undistortPoints(pts2d_cur_undis);
- 
-     // 计算像素速度
-     velocity_cur_.clear();
-     double dt = frame_cur_->stamp() - frame_pre_->stamp();
- 
-     for (size_t k = 0; k < pts2d_cur_undis.size(); k++) {
-         Vector3d vel      = (camera_->pixel2cam(pts2d_cur_undis[k]) - camera_->pixel2cam(pts2d_new_undis[k])) / dt;
-         Vector2d velocity = {vel.x(), vel.y()};
-         velocity_cur_.push_back(velocity);
- 
-         // 在关键帧后新增加的特征
-         if (pts2d_ref_frame_[k]->id() > frame_ref_->id()) {
-             velocity_ref_[k] = velocity;
-         }
-     }
- 
-     // 计算视差
-     auto pts2d_ref_undis = pts2d_ref_;
-     camera_->undistortPoints(pts2d_ref_undis);
-     parallax_ref_counts_ = parallaxFromReferenceKeyPoints(pts2d_ref_undis, pts2d_cur_undis, parallax_ref_);
- 
-     // Fundamental粗差剔除
-     if (pts2d_cur_.size() >= 15) {
-         cv::findFundamentalMat(pts2d_new_undis, pts2d_cur_undis, cv::FM_RANSAC, reprojection_error_std_, 0.99, status);
- 
-         reduceVector(pts2d_ref_, status);
-         reduceVector(pts2d_cur_, status);
-         reduceVector(pts2d_ref_frame_, status);
-         reduceVector(velocity_cur_, status);
-         reduceVector(velocity_ref_, status);
-     }
- 
-     if (pts2d_cur_.empty()) {
-         LOGW << "No new feature in previous frame";
-         drawer_->updateTrackedRefPoints({}, {});
-         return false;
-     }
- 
-     // 从参考帧跟踪过来的新特征点
-     if (is_use_visualization_) {
-         drawer_->updateTrackedRefPoints(pts2d_ref_, pts2d_cur_);
-     }
- 
-     // 用于下一帧的跟踪
-     pts2d_new_ = pts2d_cur_;
+        if (passes_tracking) {
+            // [關鍵修改] 靜止模式下的動態物體剔除
+            if (is_vehicle_static_) {
+                // 計算光流位移 (當前點 vs 上一幀點)
+                double displacement = ptsDistance(pts2d_matched[k], pts2d_map[k]);
+                
+                if (displacement > static_moving_threshold) {
+                    // 車不動，點動了 -> 這是沒被Mask到的動態物體 -> 剔除！
+                    status[k] = 0;
+                    passes_tracking = false; // 標記為失敗，不進入後續邏輯
+                    static_dynamic_removed++;
+                }
+                // 注意：這裡完全不執行 Clamp (鎖定)，讓活下來的點保持原樣
+            }
+        }
 
-     if (protection_mode) {
-         LOGI << "Track " << pts2d_new_.size() << " reference points [threshold="
-              << protection_threshold << "px-PROTECTED"
-              << (is_vehicle_static_ ? " STATIC]" : " LOW-COUNT]");
-     } else {
-         LOGI << "Track " << pts2d_new_.size() << " reference points [threshold="
-              << reverse_check_threshold << "px-NORMAL]";
-     }
+        if (passes_tracking) {
+            // [YOLO Mask]
+            bool on_static_region = true;
+            if (use_yolo_filtering) {
+                std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
+                int x = static_cast<int>(pts2d_matched[k].x);
+                int y = static_cast<int>(pts2d_matched[k].y);
+                if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
+                    on_static_region = (yolo_mask_.at<uint8_t>(y, x) > 127);
+                }
+            }
+            status[k] = on_static_region ? 1 : 0;
+        } else {
+            status[k] = 0;
+        }
+    }
 
-     return !pts2d_new_.empty();
- }
+    if (is_vehicle_static_ && static_dynamic_removed > 0) {
+        LOGW << "[StaticFilter] Removed " << static_dynamic_removed << " unmasked moving features!";
+    }
+
+    reduceVector(pts2d_map, status);
+    reduceVector(pts2d_matched, status);
+    reduceVector(mappoint_matched_, status);
+    reduceVector(mappoint_type, status);
+    reduceVector(pts2d_map_undis, status);
+
+    if (pts2d_matched.empty()) {
+        LOGE << "Track previous with mappoint failed";
+        if (is_use_visualization_) {
+            drawer_->updateTrackedMapPoints({}, {}, {});
+        }
+        parallax_map_        = 0;
+        parallax_map_counts_ = 0;
+        return false;
+    }
+
+    // 匹配后的点, 需要重新矫正畸变
+    auto pts2d_matched_undis = pts2d_matched;
+    camera_->undistortPoints(pts2d_matched_undis);
+
+    // 匹配的3D-2D
+    frame_cur_->clearFeatures();
+    tracked_mappoint_.clear();
+
+    double dt = frame_cur_->stamp() - frame_pre_->stamp();
+    for (size_t k = 0; k < pts2d_matched_undis.size(); k++) {
+        auto mappoint = mappoint_matched_[k];
+        Vector3d vel = (camera_->pixel2cam(pts2d_matched_undis[k]) - camera_->pixel2cam(pts2d_map_undis[k])) / dt;
+        
+        auto feature  = Feature::createFeature(frame_cur_, {vel.x(), vel.y()}, pts2d_matched_undis[k],
+                                               pts2d_matched[k], FEATURE_MATCHED);
+        mappoint->addObservation(feature);
+        feature->addMapPoint(mappoint);
+        frame_cur_->addFeature(mappoint->id(), feature);
+
+        tracked_mappoint_.push_back(mappoint);
+    }
+
+    if (is_use_visualization_) {
+        drawer_->updateTrackedMapPoints(pts2d_map, pts2d_matched, mappoint_type);
+    }
+
+    parallax_map_counts_ = parallaxFromReferenceMapPoints(parallax_map_);
+
+    LOGI << "Track " << tracked_mappoint_.size() << " map points";
+
+    return true;
+}
+ 
+bool Tracking::trackReferenceFrame() {
+
+    if (pts2d_ref_.empty()) {
+        LOGW << "No new feature in previous frame " << Logging::doubleData(frame_cur_->stamp());
+        return false;
+    }
+
+    // 补偿旋转预测
+    Matrix3d r_cur_pre = frame_cur_->pose().R.transpose() * frame_pre_->pose().R;
+
+    // 原始畸变补偿
+    auto pts2d_new_undis = pts2d_new_;
+    camera_->undistortPoints(pts2d_new_undis);
+
+    pts2d_cur_.clear();
+    for (const auto &pp_pre : pts2d_new_undis) {
+        Vector3d pc_pre = camera_->pixel2cam(pp_pre);
+        Vector3d pc_cur = r_cur_pre * pc_pre;
+
+        // 添加畸变
+        auto pp_cur = camera_->distortCameraPoint(pc_cur);
+        pts2d_cur_.emplace_back(pp_cur);
+    }
+
+    // 跟踪参考帧
+    vector<uint8_t> status, status_reverse;
+    vector<float> error;
+    vector<cv::Point2f> pts2d_reverse = pts2d_new_;
+
+    // 正向光流
+    cv::calcOpticalFlowPyrLK(frame_pre_->image(), frame_cur_->image(), pts2d_new_, pts2d_cur_, status, error,
+                             cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
+                             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
+                             cv::OPTFLOW_USE_INITIAL_FLOW);
+
+    // 反向光流
+    cv::calcOpticalFlowPyrLK(frame_cur_->image(), frame_pre_->image(), pts2d_cur_, pts2d_reverse, status_reverse, error,
+                             cv::Size(21, 21), TRACK_PYRAMID_LEVEL,
+                             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01),
+                             cv::OPTFLOW_USE_INITIAL_FLOW);
+
+    // 剔除跟踪失败的
+    double reverse_check_threshold = 0.5;
+    
+    // [Static Strategy]
+    const double static_moving_threshold = 1.5;
+
+    // [YOLO Mask]
+    bool use_ref_yolo_filtering = false;
+    {
+        std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
+        if (!yolo_mask_.empty() && yolo_mask_.size() == camera_->size()) {
+            use_ref_yolo_filtering = true;
+        }
+    }
+
+    int static_dynamic_removed = 0;
+
+    for (size_t k = 0; k < status.size(); k++) {
+        // Apply bidirectional check
+        bool passes_tracking = status[k] && status_reverse[k] && !isOnBorder(pts2d_cur_[k]) &&
+                               (ptsDistance(pts2d_reverse[k], pts2d_new_[k]) < reverse_check_threshold);
+
+        if (passes_tracking) {
+            // [關鍵修改] 靜止模式下的動態物體剔除
+            if (is_vehicle_static_) {
+                double displacement = ptsDistance(pts2d_cur_[k], pts2d_new_[k]);
+                
+                if (displacement > static_moving_threshold) {
+                    // 動態物體 -> 剔除
+                    status[k] = 0;
+                    passes_tracking = false;
+                    static_dynamic_removed++;
+                }
+            }
+        }
+
+        if (passes_tracking) {
+            // [YOLO Mask]
+            bool on_static_region = true;
+            if (use_ref_yolo_filtering) {
+                std::lock_guard<std::mutex> lock(yolo_mask_mutex_);
+                int x = static_cast<int>(pts2d_cur_[k].x);
+                int y = static_cast<int>(pts2d_cur_[k].y);
+                if (x >= 0 && x < yolo_mask_.cols && y >= 0 && y < yolo_mask_.rows) {
+                    on_static_region = (yolo_mask_.at<uint8_t>(y, x) > 127);
+                }
+            }
+            status[k] = on_static_region ? 1 : 0;
+        } else {
+            status[k] = 0;
+        }
+    }
+    
+    if (is_vehicle_static_ && static_dynamic_removed > 0) {
+        LOGW << "[StaticFilterRef] Removed " << static_dynamic_removed << " unmasked moving features!";
+    }
+
+    reduceVector(pts2d_ref_, status);
+    reduceVector(pts2d_cur_, status);
+    reduceVector(pts2d_new_, status);
+    reduceVector(pts2d_ref_frame_, status);
+    reduceVector(velocity_ref_, status);
+
+    if (pts2d_ref_.empty()) {
+        LOGW << "No new feature in previous frame";
+        drawer_->updateTrackedRefPoints({}, {});
+        return false;
+    }
+
+    // 原始带畸变的角点
+    pts2d_new_undis      = pts2d_new_;
+    auto pts2d_cur_undis = pts2d_cur_;
+
+    camera_->undistortPoints(pts2d_new_undis);
+    camera_->undistortPoints(pts2d_cur_undis);
+
+    // 计算像素速度
+    velocity_cur_.clear();
+    double dt = frame_cur_->stamp() - frame_pre_->stamp();
+
+    for (size_t k = 0; k < pts2d_cur_undis.size(); k++) {
+        Vector3d vel = (camera_->pixel2cam(pts2d_cur_undis[k]) - camera_->pixel2cam(pts2d_new_undis[k])) / dt;
+        Vector2d velocity = {vel.x(), vel.y()};
+        
+        velocity_cur_.push_back(velocity);
+
+        // 在关键帧后新增加的特征
+        if (pts2d_ref_frame_[k]->id() > frame_ref_->id()) {
+            velocity_ref_[k] = velocity;
+        }
+    }
+
+    // 计算视差
+    auto pts2d_ref_undis = pts2d_ref_;
+    camera_->undistortPoints(pts2d_ref_undis);
+    parallax_ref_counts_ = parallaxFromReferenceKeyPoints(pts2d_ref_undis, pts2d_cur_undis, parallax_ref_);
+
+    // Fundamental粗差剔除
+    if (pts2d_cur_.size() >= 15) {
+        // [Opt] 靜止時 RANSAC 可能因基線過短而不穩定，可考慮跳過，或保留以作為第二層防護
+        // 這裡我們保留它，因為大的動態物體已經被上面的 displacement check 殺掉了
+        cv::findFundamentalMat(pts2d_new_undis, pts2d_cur_undis, cv::FM_RANSAC, reprojection_error_std_, 0.99, status);
+
+        reduceVector(pts2d_ref_, status);
+        reduceVector(pts2d_cur_, status);
+        reduceVector(pts2d_ref_frame_, status);
+        reduceVector(velocity_cur_, status);
+        reduceVector(velocity_ref_, status);
+    }
+
+    if (pts2d_cur_.empty()) {
+        LOGW << "No new feature in previous frame";
+        drawer_->updateTrackedRefPoints({}, {});
+        return false;
+    }
+
+    // 从参考帧跟踪过来的新特征点
+    if (is_use_visualization_) {
+        drawer_->updateTrackedRefPoints(pts2d_ref_, pts2d_cur_);
+    }
+
+    // 用于下一帧的跟踪
+    pts2d_new_ = pts2d_cur_;
+
+    return !pts2d_new_.empty();
+}
  
  void Tracking::featuresDetection(Frame::Ptr &frame, bool ismask) {
  
@@ -761,12 +720,9 @@
              if (filter_ratio < 0.8) {
                  // YOLO mask: 0=dynamic, 255=static
                  cv::bitwise_and(mask, yolo_mask_, mask);
-                 LOGI << "[YOLO] Filtered " << yolo_filtered_pixels << " pixels ("
-                      << (filter_ratio * 100.0) << "% of image)";
-             } else {
-                 LOGW << "[YOLO] Skipping mask filtering - too aggressive ("
-                      << (filter_ratio * 100.0) << "% would be filtered)";
-             }
+                 
+             } 
+             
          }
      }
  

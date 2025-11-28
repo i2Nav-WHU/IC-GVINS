@@ -63,6 +63,7 @@ typedef struct IntegrationStateData {
     // vel + bias + sodo + scale : 3 + 6 + 1 + 6 = 16
     // vel + bias + sodo + scale + abv : 3 + 6 + 1 + 6 + 2 = 18
     double mix[18];
+    bool is_static = false;
 } IntegrationStateData;
 
 typedef struct IntegrationParameters {

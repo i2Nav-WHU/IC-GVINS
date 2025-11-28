@@ -160,9 +160,17 @@ void FusionROS::gnssCallback(const sensor_msgs::NavSatFixConstPtr &gnssmsg) {
     gnss_.blh[0] = gnssmsg->latitude * D2R;
     gnss_.blh[1] = gnssmsg->longitude * D2R;
     gnss_.blh[2] = gnssmsg->altitude;
-    gnss_.std[0] = sqrt(gnssmsg->position_covariance[4]); // N
-    gnss_.std[1] = sqrt(gnssmsg->position_covariance[0]); // E
-    gnss_.std[2] = sqrt(gnssmsg->position_covariance[8]); // D
+    // ROS NavSatFix covariance is in ENU order: [E, N, U] (indices 0, 4, 8)
+    // Extract to NED order (after Earth::global2local conversion, positions are in NED frame)
+    // Note: Var(Up) = Var(Down) since variance is always positive
+    gnss_.std[0] = sqrt(gnssmsg->position_covariance[4]); // North std (from index 4)
+    gnss_.std[1] = sqrt(gnssmsg->position_covariance[0]); // East std (from index 0)
+    gnss_.std[2] = sqrt(gnssmsg->position_covariance[8]); // Down std (= Up std, from index 8)
+    double z_degrade_factor = 8.0; // Z-axis STD is 3 times higher than reported (Weight is 1/9)
+    if (gnss_.std[2] > 0.0) {
+        gnss_.std[2] *= z_degrade_factor;
+        // LOGI << "Degraded Z-axis STD by factor: " << z_degrade_factor;
+    }
 
     gnss_.isyawvalid = false;
 

@@ -187,6 +187,8 @@
      // [Static Suspension] Vehicle static state
      bool is_vehicle_static_{false};
      std::mutex state_mutex_;
+
+     int static_recovery_counter_{0};
  };
 
  #endif // GVINS_TRACKING_H

@@ -6,12 +6,18 @@
 
     <license>GPLv3</license>
 
-    <maintainer email="thl@whu.edu.cn">hailiang</maintainer>
+    <maintainer email="felixlin0406@gmail.com">felixlin</maintainer>
     <author email="thl@whu.edu.cn">hailiang</author>
 
     <buildtool_depend>catkin</buildtool_depend>
 
     <depend>roscpp</depend>
     <depend>std_msgs</depend>
+    <depend>message_generation</depend>
+    <depend>sensor_msgs</depend>
+    <depend>rospy</depend>
+    <depend>cv_bridge</depend>
+    <depend>image_transport</depend>
+    <depend>message_filters</depend>
 
 </package>

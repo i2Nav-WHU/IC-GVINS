@@ -66,8 +66,8 @@ is_use_visualization: true
 # Tracking configurations
 track_check_histogram: false    # 直方图检查, 避免出现光照变化较大的图像 (Check histogram for drastic illumulation change)
 track_min_parallax: 15          # 关键帧最小像素视差 (The minmum parallax in pixels to choose a keyframe)
-track_max_interval: 0.5           # 最大的关键帧间隔, 超过则插入观测帧, s (The maximum lenght to choose a observation frame)
-track_max_features: 300         # 最大提取特征数量 (The maximum features to detect, may be more or less, see tracking.cc)
+track_max_interval: 0.2           # 最大的关键帧间隔, 超过则插入观测帧, s (The maximum lenght to choose a observation frame)
+track_max_features: 250         # 最大提取特征数量 (The maximum features to detect, may be more or less, see tracking.cc)
 
 use_dynamic_mask: true              # 是否使用動態物件遮罩
 dynamic_mask_topic: "/yolo/mask"    # YOLO 遮罩 topic

@@ -34,6 +34,7 @@
  #include "factors/pose_parameterization.h"
  #include "factors/reprojection_factor.h"
  #include "factors/residual_block_info.h"
+ #include "factors/zero_velocity_factor.h"
  #include "preintegration/imu_error_factor.h"
  #include "preintegration/imu_mix_prior_factor.h"
  #include "preintegration/imu_pose_prior_factor.h"
@@ -250,54 +251,17 @@
         LOGI << "[StaticGNSS] BLOCKING all GNSS during static mode (diagnostic mode)";
         return false;
     }
-     // [Strategy 2: Recovery Period] Gradual recovery after leaving static mode
-     else if (gnss_recovery_counter_ < gnss_recovery_window_) {
-         Vector3d gnss_enu = gnss_.blh;
-         Vector2d gnss_xy(gnss_enu.x(), gnss_enu.y());
+ 
+    {
+     gnss_        = gnss;
+     gnss_.blh    = Earth::global2local(integration_config_.origin, gnss_.blh);
+    }
 
-         // [FIX] Compare GNSS with current IMU estimate, not old static position!
-         // During static mode without GNSS, IMU drifted significantly
-         // Comparing with old static position will incorrectly reject valid GNSS
-         if (!statedatalist_.empty()) {
-             Vector3d current_imu_pos(statedatalist_.back().pose[0],
-                                      statedatalist_.back().pose[1],
-                                      statedatalist_.back().pose[2]);
-             Vector2d imu_xy(current_imu_pos.x(), current_imu_pos.y());
-             double distance_xy = (gnss_xy - imu_xy).norm();
-
-             // Check if GNSS jumps relative to current IMU estimate
-             if (distance_xy > recovery_gnss_filter_threshold_) {
-                 LOGW << "[RecoveryGNSS] Rejecting GNSS jump: XY distance = " << distance_xy
-                      << " m > relaxed threshold " << recovery_gnss_filter_threshold_ << " m"
-                      << " (GNSS vs current IMU estimate)";
-                 return false;
-             }
-
-             LOGI << "[RecoveryGNSS] Recovery step " << gnss_recovery_counter_ + 1 << "/" << gnss_recovery_window_
-                  << ", XY dist=" << distance_xy << "m (vs IMU)";
-         }
-
-         // Gradually recover Z-axis weight: 10x -> 8x -> 6x -> 4x -> 2x -> 1x
-         int recovery_idx = gnss_recovery_counter_;  // 0-based
-         double z_deweight_factors[] = {10.0, 8.0, 6.0, 4.0, 2.0, 1.0};
-         double z_factor = (recovery_idx < 6) ? z_deweight_factors[recovery_idx] : 1.0;
-
-         gnss_.std[2] *= z_factor;
-         gnss_recovery_counter_++;
-
-         LOGI << "[RecoveryGNSS] Z deweight factor: " << z_factor
-              << " (" << gnss.std[2] << "m -> " << gnss_.std[2] << "m)";
-
-         // Recovery period completed
-         if (gnss_recovery_counter_ >= gnss_recovery_window_) {
-             static_gnss_initialized_ = false;  // Stop distance checking
-             LOGI << "[RecoveryGNSS] Recovery period completed, fully dynamic mode";
-         }
-     }
-     // [Normal Mode] Fully dynamic, no filtering
-     else {
-         // Normal GNSS processing, no adjustments
-     }
+    // [XY_Trust] Increase GNSS XY weight by reducing standard deviation
+    double xy_trust_factor = 0.7; // 例如: 降低 50% 的標準差 (權重提升 4 倍)
+    gnss_.std[0] *= xy_trust_factor; // North (N)
+    gnss_.std[1] *= xy_trust_factor; // East (E)
+    LOGI << "[XY_Trust] XY-std adjusted: N=" << gnss_.std[0] << ", E=" << gnss_.std[1];
  
      isgnssready_ = true;
      return true;
@@ -1065,7 +1029,12 @@
      state      = preintegrationlist_.back()->currentState();
      state.time = time;
  
-     statedatalist_.emplace_back(Preintegration::stateToData(state, preintegration_options_));
+     IntegrationStateData state_data = Preintegration::stateToData(state, preintegration_options_);
+    
+     // 將 detectStaticState 更新的原子變量狀態寫入，傳遞給後端優化使用
+     state_data.is_static = is_vehicle_static_; 
+
+     statedatalist_.emplace_back(state_data);
      timelist_.push_back(time);
  }
  
@@ -1298,6 +1267,27 @@
      // 状态参数
      // State parameters
      addStateParameters(problem);
+
+     // [新增 ZUPT 邏輯開始] ==========================================================
+    // 遍歷滑動窗口內的所有狀態，對標記為靜止的狀態添加零速約束
+    // 這模仿了 ES-EKF 在靜止時的高頻修正，強迫優化器調整 IMU Bias
+    for (size_t i = 0; i < statedatalist_.size(); i++) {
+        if (statedatalist_[i].is_static) {
+            // ZUPT 權重：0.01 m/s (1 cm/s)，代表我們對靜止狀態非常有信心
+            // 如果發現約束太強導致收斂困難，可以適當放寬到 0.05 或 0.1
+            double zupt_std = 0.01; 
+
+            // 創建一元因子，只約束 mix 參數塊 (包含速度和 Bias)
+            // 參數塊維度會根據 options 自動調整 (例如是否包含里程計 scale)
+            auto* zupt_factor = new ZuptVelocityFactor(zupt_std, preintegration_options_);
+            
+            // 添加殘差塊
+            // 使用 HuberLoss 增強魯棒性，防止誤檢測導致系統崩潰
+            problem.AddResidualBlock(zupt_factor, 
+                                     new ceres::HuberLoss(1.0), 
+                                     statedatalist_[i].mix);
+        }
+    }
  
      // 重投影参数
      // Visual parameters
@@ -1981,6 +1971,13 @@
              continue;
          }
  
+
+        // [CRITICAL FIX] Check if ref_frame timestamp is within timelist range BEFORE accessing
+        // This prevents crash when reference frames are marginalized while mappoints still exist
+        if (ref_frame->stamp() < timelist_.front() || ref_frame->stamp() > timelist_.back()) {
+            // Reference frame has been marginalized, skip this mappoint entirely
+            continue;
+        }
          auto ref_frame_pc      = camera_->pixel2cam(mappoint->referenceKeypoint());
          size_t ref_frame_index = getStateDataIndex(ref_frame->stamp());
          if (ref_frame_index < 0) {
@@ -2020,10 +2017,37 @@
                  // This should rarely happen now, but keep check for safety
                  continue;
              }
+             double current_reproj_std = optimize_reprojection_error_std_;
+            
+            // 1. 獲取該幀的速度估計值 (mix[0~2] 是 velocity)
+            double vx = statedatalist_[obs_frame_index].mix[0];
+            double vy = statedatalist_[obs_frame_index].mix[1];
+            double vz = statedatalist_[obs_frame_index].mix[2];
+            double velocity = sqrt(vx * vx + vy * vy + vz * vz);
+
+            // 2. 定義參數
+            const double max_penalty_scale = 1.3;     // 最大懲罰倍率
+            const double low_speed_threshold = 3.0;   // 低速閾值 (m/s)
+
+            // 3. 計算權重縮放係數
+            double scale = 1.0;
+            
+            // 優先使用前端檢測的靜止標記 (如果有的話)
+            if (statedatalist_[obs_frame_index].is_static) {
+                scale = max_penalty_scale;
+            } 
+            // 否則使用速度進行線性插值
+            else if (velocity < low_speed_threshold) {
+                // 速度越小，scale 越大 (1.0 -> 5.0)
+                scale = 1.0 + (max_penalty_scale - 1.0) * (1.0 - velocity / low_speed_threshold);
+            }
+
+            // 應用縮放
+            current_reproj_std *= scale;
  
              auto factor = new ReprojectionFactor(ref_frame_pc, obs_frame_pc, ref_feature->velocityInPixel(),
                                                   obs_feature->velocityInPixel(), ref_frame->timeDelay(),
-                                                  obs_frame->timeDelay(), optimize_reprojection_error_std_);
+                                                  obs_frame->timeDelay(), current_reproj_std);
              auto residual_block_id =
                  problem.AddResidualBlock(factor, loss_function, statedatalist_[ref_frame_index].pose,
                                           statedatalist_[obs_frame_index].pose, extrinsic_, invdepth, &extrinsic_[7]);
